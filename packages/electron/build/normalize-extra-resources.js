@@ -97,7 +97,14 @@ for (const from of fromPaths) {
   const parent = path.dirname(paired.expected);
   fs.mkdirSync(parent, { recursive: true });
   const target = path.relative(parent, paired.alternate);
-  fs.symlinkSync(target, paired.expected);
+  // Windows refuses a 'dir' symlink without admin rights or Developer Mode;
+  // a junction needs neither and must point at an absolute path. 'junction'
+  // is an alias for 'dir' on POSIX, where the relative target is kept.
+  if (process.platform === 'win32') {
+    fs.symlinkSync(path.resolve(paired.alternate), paired.expected, 'junction');
+  } else {
+    fs.symlinkSync(target, paired.expected);
+  }
   linked++;
   console.log(`[normalize-extra-resources] Linked ${from} -> ${target}`);
 }
