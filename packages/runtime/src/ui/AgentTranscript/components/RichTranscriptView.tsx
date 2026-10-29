@@ -483,6 +483,41 @@ export function isAtFalseTranscriptTop(scrollOffset: number, firstRowOffset: num
 }
 
 /**
+ * Index of the last VList child: the messages plus the rows rendered after
+ * them (the dev-only restart divider and the "Thinking" row). Scrolling to
+ * `messages.length - 1` while a trailing row exists leaves that row, and with
+ * it the true end of the transcript, below the viewport.
+ */
+export function resolveTranscriptEndIndex(messageCount: number, trailingRowCount: number): number {
+  return Math.max(0, messageCount + trailingRowCount - 1);
+}
+
+/**
+ * Identity of the transcript's visible tail. Message reloads during and after
+ * a turn hand the view a fresh array with the same content (one per second
+ * while running, then two more on completion). Keying auto-scroll on this
+ * signature instead of array identity keeps those reloads from pulling a user
+ * who sits near the bottom back to a stale "end" a few lines up; growth of
+ * the last row is handled by the resize re-stick instead.
+ */
+export function transcriptTailSignature(
+  messages: ReadonlyArray<Pick<TranscriptViewMessage, 'id' | 'sequence' | 'type' | 'text' | 'toolCall'>>,
+): string {
+  const last = messages[messages.length - 1];
+  if (!last) return '0';
+  const key = Number.isFinite(last.id) ? `id-${last.id}` : Number.isFinite(last.sequence) ? `seq-${last.sequence}` : 'idx';
+  // Streamed growth of the tail row (text, tool output, progress) still counts
+  // as a change; only a reload with identical content is a no-op.
+  const content = [
+    last.text?.length ?? 0,
+    last.toolCall?.status ?? '',
+    last.toolCall?.result?.length ?? 0,
+    last.toolCall?.progress?.length ?? 0,
+  ].join('/');
+  return `${messages.length}:${key}:${last.type}:${content}`;
+}
+
+/**
  * True only when there is a live, non-collapsed text selection whose anchor sits
  * inside the transcript root. Scopes the auto-scroll suppression to selections
  * made in the transcript, so selecting text elsewhere (the composer, a sidebar)
@@ -858,7 +893,13 @@ export const RichTranscriptView = React.forwardRef<
     return () => cancelAnimationFrame(frame);
   }, [sessionId, isContainerVisible]); // Re-run when session changes or container becomes visible
 
-  // Auto-scroll to bottom when messages change (if user was at bottom)
+  // The VList renders trailing rows after the messages; "end" has to mean the
+  // last of those, not the last message.
+  const trailingRowCount = (restartAtBottom ? 1 : 0) + (isWaitingForResponse ? 1 : 0);
+  const endIndex = resolveTranscriptEndIndex(messages.length, trailingRowCount);
+  const tailSignature = transcriptTailSignature(messages);
+
+  // Auto-scroll to the end when the visible tail changes (if user was at bottom)
   useEffect(() => {
     if (pendingQuestions.length > 0) return;
     const wasAtBottom = getAtBottomState();
@@ -872,14 +913,47 @@ export const RichTranscriptView = React.forwardRef<
 
       const hasActiveSelection = hasActiveTranscriptSelection(viewRootRef.current);
       if (shouldAutoScrollTranscript(wasAtBottom, distanceFromBottom, hasActiveSelection)) {
-        // Account for the "Thinking..." indicator which is an extra item after messages
-        const lastIndex = isWaitingForResponse ? messages.length : messages.length - 1;
-        vlistRef.current.scrollToIndex(lastIndex, { align: 'end' });
+        vlistRef.current.scrollToIndex(endIndex, { align: 'end' });
         setAtBottomState(true);
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [getAtBottomState, messages, isWaitingForResponse, setAtBottomState, pendingQuestions.length]);
+  }, [getAtBottomState, tailSignature, endIndex, setAtBottomState, pendingQuestions.length]);
+
+  // Re-stick to the end when the transcript's own geometry changes while the
+  // user is at the bottom: the "Thinking" row giving way to the completed
+  // turn's "Finished in" line, the last row growing as it streams, or the
+  // viewport shrinking when the raw terminal panel expands or is dragged
+  // taller. None of those change the tail signature, so the effect above
+  // never sees them, and the end of a reply used to sit a few lines below the
+  // fold with nothing to bring it back.
+  const restickToEndRef = useRef<() => void>(() => {});
+  restickToEndRef.current = () => {
+    if (!vlistRef.current) return;
+    if (pendingQuestions.length > 0) return;
+    if (!getAtBottomState()) return;
+    if (hasActiveTranscriptSelection(viewRootRef.current)) return;
+    vlistRef.current.scrollToIndex(endIndex, { align: 'end' });
+  };
+  const hasRenderedList = isContainerVisible && messages.length > 0;
+  useEffect(() => {
+    if (!hasRenderedList || typeof ResizeObserver === 'undefined') return;
+    const viewport = scrollContainerRef.current?.querySelector<HTMLElement>('.rich-transcript-vlist');
+    if (!viewport) return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => restickToEndRef.current());
+    });
+    observer.observe(viewport);
+    // virtua's first child is the spacer whose height is the measured content size.
+    const content = viewport.firstElementChild;
+    if (content) observer.observe(content);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [hasRenderedList, isScrollReady]);
 
   // Listen for routed search events from AgentWorkstreamPanel
   // Only respond if this session is the active one
@@ -918,10 +992,8 @@ export const RichTranscriptView = React.forwardRef<
 
   const scrollToBottom = useCallback(() => {
     if (!vlistRef.current) return;
-    // Account for the "Thinking..." indicator which is an extra item after messages
-    const lastIndex = isWaitingForResponse ? messages.length : messages.length - 1;
-    vlistRef.current.scrollToIndex(lastIndex, { align: 'end' });
-  }, [messages.length, isWaitingForResponse]);
+    vlistRef.current.scrollToIndex(endIndex, { align: 'end' });
+  }, [endIndex]);
 
   const toggleMessageCollapse = useCallback((index: number) => {
     setCollapsedMessages(prev => {
@@ -1208,7 +1280,7 @@ export const RichTranscriptView = React.forwardRef<
 
           {/* Pending permissions banner - shown when pending permission widgets are scrolled out of view */}
           {showPermissionBanner && pendingPermissionIndices.length > 0 && (
-            <div className="sticky bottom-12 flex justify-center z-10 pointer-events-none">
+            <div className="rich-transcript-permission-banner absolute bottom-12 left-0 right-0 flex justify-center z-10 pointer-events-none">
               <button
                 onClick={() => {
                   const targetIdx = pendingPermissionIndices[0];
@@ -1224,8 +1296,11 @@ export const RichTranscriptView = React.forwardRef<
 
           {/* Scroll to bottom button - uses ref + opacity to avoid layout shifts that interfere with text selection.
               The container spans the full pane width, so it must stay pointer-events-none in every state;
-              only the button opts back in, otherwise it becomes a dead band for clicks and the wheel. */}
-          <div ref={scrollButtonRef} className="rich-transcript-scroll-button-container sticky bottom-3 flex justify-center pointer-events-none opacity-0 transition-opacity">
+              only the button opts back in, otherwise it becomes a dead band for clicks and the wheel.
+              Both overlays are absolute, not sticky: a sticky element laid out after the full-height
+              content gave the clipped scroll container overflow of its own, which the browser could
+              scroll (focus, find, selection) independently of the virtual list. */}
+          <div ref={scrollButtonRef} className="rich-transcript-scroll-button-container absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none opacity-0 transition-opacity">
             <button
               ref={scrollButtonElementRef}
               onClick={scrollToBottom}

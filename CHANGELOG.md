@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 <!-- Bug fixes go here -->
 - The OpenAI Codex model picker now lists the models your Codex installation reports, so new releases appear and retired ones drop out without waiting for an app update; a selected model that Codex has since retired stays listed as unavailable instead of being swapped silently.
+- The session transcript now stays at the true end of a reply: finishing a turn, a growing last message, or resizing the raw terminal panel no longer leaves the last lines below the fold, and scrolling to the bottom by hand no longer snaps back up a few lines.
 
 ### Removed
 <!-- Removed features go here -->

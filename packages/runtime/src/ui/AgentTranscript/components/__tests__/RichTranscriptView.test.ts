@@ -8,10 +8,12 @@ import {
   isInteractiveWidgetTool,
   isTranscriptAtBottom,
   parseUnifiedDiffToReplacements,
+  resolveTranscriptEndIndex,
   shouldAutoScrollTranscript,
   stripMcpPrefix,
   formatSubagentAuditLabel,
   toolCallDiffsToEdits,
+  transcriptTailSignature,
 } from '../RichTranscriptView';
 
 function makeTestMessage(overrides: Partial<TranscriptViewMessage> = {}): TranscriptViewMessage {
@@ -553,5 +555,65 @@ describe('sub-agent audit labels', () => {
   it('omits the label when metadata is absent and does not add placeholders', () => {
     expect(formatSubagentAuditLabel(null, undefined)).toBeNull();
     expect(formatSubagentAuditLabel('gpt-5.4', null)).toBe('Model: gpt-5.4');
+  });
+});
+
+describe('transcript end index', () => {
+  it('counts the rows rendered after the messages, so "end" is the real last child', () => {
+    // 3 messages, no trailing rows: the last message.
+    expect(resolveTranscriptEndIndex(3, 0)).toBe(2);
+    // The "Thinking" row follows the messages while a turn runs.
+    expect(resolveTranscriptEndIndex(3, 1)).toBe(3);
+    // Dev-mode restart divider plus the "Thinking" row.
+    expect(resolveTranscriptEndIndex(3, 2)).toBe(4);
+    expect(resolveTranscriptEndIndex(0, 0)).toBe(0);
+  });
+});
+
+describe('transcript tail signature', () => {
+  const message = (overrides: Partial<TranscriptViewMessage>): TranscriptViewMessage => ({
+    id: 1,
+    sequence: 1,
+    createdAt: new Date(0),
+    type: 'assistant_message',
+    subagentId: null,
+    ...overrides,
+  });
+
+  it('is stable across reloads that hand over an equal but fresh array', () => {
+    const first = [message({ id: 1 }), message({ id: 2, text: 'the whole reply' })];
+    const reloaded = [message({ id: 1 }), message({ id: 2, text: 'the whole reply' })];
+    expect(reloaded).not.toBe(first);
+    expect(transcriptTailSignature(reloaded)).toBe(transcriptTailSignature(first));
+  });
+
+  it('changes while the tail row streams: text growth, tool status, tool output, progress', () => {
+    const base = [message({ id: 2, text: 'partial' })];
+    expect(transcriptTailSignature([message({ id: 2, text: 'partial, and the rest' })])).not.toBe(transcriptTailSignature(base));
+    const tool = (overrides: Record<string, unknown>) => [message({
+      id: 3,
+      type: 'tool_call',
+      toolCall: {
+        toolName: 'Bash', toolDisplayName: 'Bash', status: 'running', description: null, arguments: {},
+        targetFilePath: null, mcpServer: null, mcpTool: null, providerToolCallId: null, progress: [],
+        ...overrides,
+      } as TranscriptViewMessage['toolCall'],
+    })];
+    expect(transcriptTailSignature(tool({ status: 'completed' }))).not.toBe(transcriptTailSignature(tool({})));
+    expect(transcriptTailSignature(tool({ result: 'done' }))).not.toBe(transcriptTailSignature(tool({})));
+    expect(transcriptTailSignature(tool({ progress: [{ elapsedSeconds: 1, progressContent: 'x' }] }))).not.toBe(transcriptTailSignature(tool({})));
+  });
+
+  it('changes when a message is appended, the tail is replaced, or its kind changes', () => {
+    const base = [message({ id: 1 })];
+    expect(transcriptTailSignature([...base, message({ id: 2 })])).not.toBe(transcriptTailSignature(base));
+    expect(transcriptTailSignature([message({ id: 7 })])).not.toBe(transcriptTailSignature(base));
+    expect(transcriptTailSignature([message({ id: 1, type: 'tool_call' })])).not.toBe(transcriptTailSignature(base));
+    expect(transcriptTailSignature([])).toBe('0');
+  });
+
+  it('falls back to the sequence, then the position, for rows without a database id', () => {
+    expect(transcriptTailSignature([message({ id: undefined as unknown as number, sequence: 9 })])).toContain('seq-9');
+    expect(transcriptTailSignature([message({ id: undefined as unknown as number, sequence: undefined as unknown as number })])).toContain('idx');
   });
 });
