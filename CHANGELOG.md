@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- The OpenAI Codex model picker now lists the models your Codex installation reports, so new releases appear and retired ones drop out without waiting for an app update; a selected model that Codex has since retired stays listed as unavailable instead of being swapped silently.
 
 ### Removed
 <!-- Removed features go here -->
