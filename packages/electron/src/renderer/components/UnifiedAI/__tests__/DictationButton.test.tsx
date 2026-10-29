@@ -3,6 +3,24 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DictationButton } from '../DictationButton';
 import { DictationStatus, dictationStatusLabel } from '../DictationStatus';
+import { insertTranscriptIntoTarget } from '../TranscriptDictationProvider';
+
+describe('insertTranscriptIntoTarget', () => {
+  it('lands the transcript at the caret of the widget textarea and hands back the new value', () => {
+    const ta = document.createElement('textarea');
+    ta.value = 'keep this';
+    ta.setSelectionRange(4, 4);
+    const setValue = vi.fn();
+    insertTranscriptIntoTarget({ getTextarea: () => ta, setValue }, 'dictated');
+    expect(setValue).toHaveBeenCalledWith('keep dictated this');
+  });
+
+  it('appends when the textarea is not mounted', () => {
+    const setValue = vi.fn();
+    insertTranscriptIntoTarget({ getTextarea: () => null, setValue }, 'dictated');
+    expect(setValue).toHaveBeenCalledWith('dictated ');
+  });
+});
 
 const recorder = {
   start: vi.fn(async () => {}),

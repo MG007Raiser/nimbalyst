@@ -47,6 +47,7 @@ import {
 
 import type { CustomToolWidgetProps } from './index';
 import { interactiveWidgetHostAtom } from '../../../../store/atoms/interactiveWidgetHost';
+import { useTranscriptDictation } from '../transcriptDictationContext';
 import {
   clearRequestUserInputDraft,
   requestUserInputDraftAtom,
@@ -233,6 +234,7 @@ function SingleSelectRenderer({
 }: FieldRendererProps<RequestUserInputSingleSelectField>) {
   if (draft.type !== 'singleSelect') return null;
   const otherInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const dictation = useTranscriptDictation();
 
   const pick = (id: string) => {
     if (disabled) return;
@@ -322,7 +324,7 @@ function SingleSelectRenderer({
             <span className="text-[0.8125rem] font-medium text-nim leading-snug">Other</span>
           </button>
           {draft.state.otherSelected && (
-            <div className="px-2.5 pb-2">
+            <div className="request-user-input-other-row flex items-end gap-1.5 px-2.5 pb-2">
               <textarea
                 ref={(el) => { otherInputRef.current = el; }}
                 data-testid="request-user-input-singleselect-other-input"
@@ -333,6 +335,11 @@ function SingleSelectRenderer({
                 rows={2}
                 className="w-full px-2.5 py-2 rounded border border-nim bg-nim text-sm text-nim placeholder-nim-faint resize-y focus:outline-none focus:border-nim-primary disabled:opacity-50"
               />
+              {dictation?.renderButton({
+                getTextarea: () => otherInputRef.current,
+                setValue: setOtherText,
+                disabled,
+              })}
             </div>
           )}
         </div>

@@ -748,6 +748,52 @@ describe('AskUserQuestionWidget', () => {
     AskUserQuestionWidget = mod.AskUserQuestionWidget;
   });
 
+  it('puts the host dictation button beside the Other box and takes its text', async () => {
+    const { TranscriptDictationContext } = await import('../transcriptDictationContext');
+    const message = makeToolMessage('AskUserQuestion', {
+      questions: [
+        {
+          question: 'Which framework?',
+          header: 'Framework',
+          options: [{ label: 'React', description: 'Component library' }],
+          multiSelect: false,
+        },
+      ],
+    });
+    const renderButton = vi.fn((target: { setValue: (value: string) => void; getTextarea: () => HTMLTextAreaElement | null }) => (
+      <button type="button" data-testid="fake-mic" onClick={() => target.setValue(`${target.getTextarea()?.value ?? ''}dictated words`)}>
+        mic
+      </button>
+    ));
+    render(
+      <Wrapper>
+        <TranscriptDictationContext.Provider value={{ renderButton }}>
+          <AskUserQuestionWidget message={message} isExpanded={false} onToggle={() => {}} sessionId="no-host" />
+        </TranscriptDictationContext.Provider>
+      </Wrapper>
+    );
+    expect(screen.queryByTestId('fake-mic')).toBeNull();
+    fireEvent.click(screen.getByText('Other'));
+    fireEvent.click(screen.getByTestId('fake-mic'));
+    const textarea = screen.getByTestId('ask-user-question-other-input') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('dictated words');
+    expect(renderButton.mock.calls[0][0].getTextarea()).toBe(textarea);
+  });
+
+  it('shows no dictation button when the host offers none', () => {
+    const message = makeToolMessage('AskUserQuestion', {
+      questions: [{ question: 'Which?', header: 'Q', options: [{ label: 'A', description: 'a' }], multiSelect: false }],
+    });
+    render(
+      <Wrapper>
+        <AskUserQuestionWidget message={message} isExpanded={false} onToggle={() => {}} sessionId="no-host" />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByText('Other'));
+    expect(screen.getByTestId('ask-user-question-other-input')).toBeDefined();
+    expect(document.querySelector('.ask-user-question-other-row')!.children.length).toBe(1);
+  });
+
   it('renders pending state without host', () => {
     const message = makeToolMessage('AskUserQuestion', {
       questions: [

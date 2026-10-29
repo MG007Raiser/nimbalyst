@@ -12,6 +12,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useAtom, useAtomValue } from 'jotai';
 import type { CustomToolWidgetProps } from './index';
 import { interactiveWidgetHostAtom } from '../../../../store/atoms/interactiveWidgetHost';
+import { useTranscriptDictation } from '../transcriptDictationContext';
 import {
   askUserQuestionDraftAtom,
   clearAskUserQuestionDraft,
@@ -242,6 +243,8 @@ export const AskUserQuestionWidget: React.FC<CustomToolWidgetProps> = ({
 }) => {
   const toolCall = message.toolCall;
   const questionId = toolCall?.providerToolCallId || '';
+  // Host-provided microphone for the "Other" box; null where the host has no dictation.
+  const dictation = useTranscriptDictation();
 
   // A question without a stable ID can't be submitted (host.askUserQuestionSubmit
   // keys off it) and draft state would collide with other no-ID widgets. Fail loud
@@ -623,7 +626,7 @@ export const AskUserQuestionWidget: React.FC<CustomToolWidgetProps> = ({
                     <span className="text-[0.8125rem] font-medium text-nim leading-snug">Other</span>
                   </button>
                   {otherSelected[question.question] && (
-                    <div className="px-2.5 pb-2">
+                    <div className="ask-user-question-other-row flex items-end gap-1.5 px-2.5 pb-2">
                       <textarea
                         ref={(el) => { otherInputRefs.current[question.question] = el; }}
                         data-testid="ask-user-question-other-input"
@@ -640,6 +643,11 @@ export const AskUserQuestionWidget: React.FC<CustomToolWidgetProps> = ({
                         rows={2}
                         className="w-full px-2.5 py-2 rounded border border-nim bg-nim text-sm text-nim placeholder-nim-faint resize-y focus:outline-none focus:border-nim-primary disabled:opacity-50"
                       />
+                      {dictation?.renderButton({
+                        getTextarea: () => otherInputRefs.current[question.question] ?? null,
+                        setValue: (value) => handleOtherTextChange(question.question, value),
+                        disabled: isSubmitting,
+                      })}
                     </div>
                   )}
                 </div>
