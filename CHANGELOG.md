@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+
+### Changed
+<!-- Changes to existing functionality go here -->
+
+### Fixed
+<!-- Bug fixes go here -->
+
+### Removed
+<!-- Removed features go here -->
+
+## [0.82.403] - 2026-10-29
+
+### Added
+<!-- New features go here -->
 - Dictation (alpha): the microphone button also sits beside the "Other" answer box when the assistant asks you a question, so you can dictate a free-text answer without leaving the prompt.
 
 ### Changed
