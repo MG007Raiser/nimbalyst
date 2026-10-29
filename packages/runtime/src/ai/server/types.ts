@@ -369,6 +369,12 @@ export interface AIModel {
    */
   unavailable?: boolean;
   /**
+   * Highest reasoning effort the provider accepts for this model, when its
+   * live catalog reports one (Codex `model/list`). The renderer registers it
+   * so the effort menu never offers a level the model would reject.
+   */
+  effortCeiling?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
+  /**
    * Custom Claude gateway models only: the Anthropic model id whose
    * capabilities this model shares (from Claude settings `modelPicker`).
    */

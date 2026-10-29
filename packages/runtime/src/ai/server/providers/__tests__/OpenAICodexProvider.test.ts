@@ -2,21 +2,28 @@ import { codexSandboxSetupCompleted } from '../../protocols/codexAppServer/windo
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAICodexProvider } from '../OpenAICodexProvider';
 import { OpenAICodexACPProvider } from '../OpenAICodexACPProvider';
 import { configureMcpServers } from '../../services/mcpServerConfig';
 import * as codexBinaryPath from '../codex/codexBinaryPath';
 import * as codexSdkLoader from '../codex/codexSdkLoader';
+import type { CodexCatalogModel } from '../codex/codexModelCatalog';
+import {
+  clearRegisteredCodexEffortCeilings,
+  resolveCodexEffortCeiling,
+  type EffortLevel,
+} from '../../effortLevels';
 import { AISessionsRepository } from '../../../../storage/repositories/AISessionsRepository';
 
 // getModels() cross-checks the OpenAI model catalogue whenever it is given an
 // API key. Unmocked, that is a real api.openai.com request from the unit suite:
 // it passes only because the 401 is fast, and times the test out whenever the
 // network is slow or the SDK retries.
+const openAiModelList = vi.hoisted(() => vi.fn(async () => ({ data: [] as Array<{ id: string }> })));
 vi.mock('openai', () => ({
   default: class {
-    models = { list: async () => ({ data: [] as Array<{ id: string }> }) };
+    models = { list: openAiModelList };
   },
 }));
 
@@ -235,58 +242,120 @@ describe('OpenAICodexProvider', () => {
     }
   });
 
-  it('returns fallback models when SDK model discovery is unavailable', async () => {
-    expect(OpenAICodexProvider.DEFAULT_MODEL).toBe('openai-codex:gpt-6.1-sol');
-
-    const models = await OpenAICodexProvider.getModels(undefined, {
-      loadSdkModule: async () => {
-        throw new Error('sdk unavailable');
-      },
+  /** The visible roster codex 0.162.1 reports through `model/list` (recorded 2026-10-29). */
+  const recordedCatalog = (): CodexCatalogModel[] => {
+    const all: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+    const noUltra: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+    const make = (id: string, displayName: string, supportedEfforts: EffortLevel[], extra: Partial<CodexCatalogModel> = {}): CodexCatalogModel => ({
+      id, displayName, isDefault: false, hidden: false, supportedEfforts, defaultEffort: 'medium', ...extra,
     });
+    return [
+      make('gpt-6.1-sol', 'GPT-6.1-Sol', all, { isDefault: true, defaultEffort: 'low' }),
+      make('gpt-6-astra', 'GPT-6-Astra', all),
+      make('gpt-6.1-terra', 'GPT-6.1 Terra', all, { defaultEffort: 'low' }),
+      make('gpt-6-sol', 'GPT-6-Sol', all),
+      make('gpt-reserve', 'GPT-Reserve', noUltra, { hidden: true }),
+      make('gpt-6-luna', 'GPT-6-Luna', noUltra),
+      make('gpt-5.6-sol', 'GPT-5.6-Sol', all, { defaultEffort: 'low' }),
+      make('gpt-5.6-terra', 'GPT-5.6-Terra', all),
+      make('gpt-5.6-luna', 'GPT-5.6-Luna', noUltra),
+      make('codex-auto-review', 'Codex Auto Review', noUltra, { hidden: true }),
+    ];
+  };
 
-    expect(models.length).toBeGreaterThan(1);
-    expect(models).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: 'openai-codex:gpt-5.4',
-        provider: 'openai-codex',
-      }),
-      expect.objectContaining({
-        id: 'openai-codex:gpt-5.4-mini',
-        provider: 'openai-codex',
-      }),
-    ]));
+  afterEach(() => {
+    OpenAICodexProvider.resetModelCatalogStateForTests();
+    clearRegisteredCodexEffortCeilings();
   });
 
-  it('leads the Codex roster with the GPT-6 models and keeps them out of the ACP roster', async () => {
-    const expectedCodexModelIds = [
-      'gpt-6.1-sol',
-      'gpt-6-sol',
-      'gpt-6-astra',
-      'gpt-6-luna',
-      'gpt-5.6-sol',
-      'gpt-5.6-terra',
-      'gpt-5.6-luna',
-      'gpt-5.5',
-      'gpt-5.4',
-      'gpt-5.4-mini',
-    ];
-    // The ACP transport is deprecated for OpenAI and runs a separate, much
-    // older codex build with no GPT-6 catalog entries, so offering them there
-    // would hand users a model that build cannot start.
-    const expectedAcpModelIds = expectedCodexModelIds.filter((id) => !/^gpt-6[.-]/.test(id));
+  it('lists exactly the visible models the bundled codex reports, in catalog order (#675)', async () => {
+    const models = await OpenAICodexProvider.getModels(undefined, { listCatalog: async () => recordedCatalog() });
+
+    expect(models.map((model) => model.id)).toEqual([
+      'openai-codex:gpt-6.1-sol',
+      'openai-codex:gpt-6-astra',
+      'openai-codex:gpt-6.1-terra',
+      'openai-codex:gpt-6-sol',
+      'openai-codex:gpt-6-luna',
+      'openai-codex:gpt-5.6-sol',
+      'openai-codex:gpt-5.6-terra',
+      'openai-codex:gpt-5.6-luna',
+    ]);
+    // Retired entries no longer show, hidden internal entries never did.
+    expect(models.map((model) => model.id)).not.toContain('openai-codex:gpt-5.4');
+    expect(models.map((model) => model.id)).not.toContain('openai-codex:gpt-reserve');
+
+    const terra = models.find((model) => model.id === 'openai-codex:gpt-6.1-terra')!;
+    expect(terra).toMatchObject({ name: 'GPT-6.1 Terra', provider: 'openai-codex', contextWindow: 272000, effortCeiling: 'ultra' });
+    expect(models.find((model) => model.id === 'openai-codex:gpt-6-luna')).toMatchObject({ effortCeiling: 'max' });
+    expect(resolveCodexEffortCeiling('openai-codex:gpt-6.1-terra')).toBe('ultra');
+    expect(OpenAICodexProvider.getDefaultModel()).toBe('openai-codex:gpt-6.1-sol');
+  });
+
+  it('surfaces a model the static tables have never heard of, with its own ceiling and default', async () => {
+    const models = await OpenAICodexProvider.getModels(undefined, {
+      listCatalog: async () => [
+        { id: 'gpt-7-nova', displayName: 'GPT-7 Nova', isDefault: true, hidden: false, supportedEfforts: ['low', 'medium', 'high'] },
+      ],
+    });
+
+    expect(models).toEqual([
+      expect.objectContaining({
+        id: 'openai-codex:gpt-7-nova',
+        name: 'GPT-7 Nova',
+        provider: 'openai-codex',
+        contextWindow: 272000,
+        maxTokens: 128000,
+        effortCeiling: 'high',
+      }),
+    ]);
+    expect(resolveCodexEffortCeiling('openai-codex:gpt-7-nova')).toBe('high');
+    expect(OpenAICodexProvider.getDefaultModel()).toBe('openai-codex:gpt-7-nova');
+  });
+
+  it('falls back to the static roster when the catalog cannot be read, and keeps the ACP roster separate', async () => {
+    expect(OpenAICodexProvider.DEFAULT_MODEL).toBe('openai-codex:gpt-6.1-sol');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
     const codexModels = await OpenAICodexProvider.getModels(undefined, {
-      loadSdkModule: async () => {
-        throw new Error('sdk unavailable');
+      listCatalog: async () => {
+        throw new Error('codex binary missing');
+      },
+    });
+    await OpenAICodexProvider.getModels(undefined, {
+      listCatalog: async () => {
+        throw new Error('codex binary missing');
       },
     });
     const acpModels = await OpenAICodexACPProvider.getModels();
+    // One warning per process, not one per picker open.
+    const warnings = warn.mock.calls.map((call) => String(call[0]));
+    warn.mockRestore();
+    expect(warnings).toEqual(['[OpenAICodex] model catalog unavailable, using the static list:']);
 
-    expect(codexModels.map((model) => model.id)).toEqual(
-      expectedCodexModelIds.map((modelId) => `openai-codex:${modelId}`)
-    );
-    expect(acpModels.map((model) => model.id)).toEqual(
-      expectedAcpModelIds.map((modelId) => `openai-codex-acp:${modelId}`)
-    );
+    // The static roster mirrors codex 0.162.1 so an offline machine sees the same list.
+    expect(codexModels.map((model) => model.id)).toEqual([
+      'openai-codex:gpt-6.1-sol',
+      'openai-codex:gpt-6-astra',
+      'openai-codex:gpt-6.1-terra',
+      'openai-codex:gpt-6-sol',
+      'openai-codex:gpt-6-luna',
+      'openai-codex:gpt-5.6-sol',
+      'openai-codex:gpt-5.6-terra',
+      'openai-codex:gpt-5.6-luna',
+    ]);
+    expect(OpenAICodexProvider.getDefaultModel()).toBe('openai-codex:gpt-6.1-sol');
+    // The ACP transport is deprecated for OpenAI and runs a separate, much
+    // older codex build with no GPT-6 catalog entries, so offering them there
+    // would hand users a model that build cannot start.
+    expect(acpModels.map((model) => model.id)).toEqual([
+      'openai-codex-acp:gpt-5.6-sol',
+      'openai-codex-acp:gpt-5.6-terra',
+      'openai-codex-acp:gpt-5.6-luna',
+      'openai-codex-acp:gpt-5.5',
+      'openai-codex-acp:gpt-5.4',
+      'openai-codex-acp:gpt-5.4-mini',
+    ]);
   });
 
   it('normalizes legacy codex default aliases to the GPT-6.1 Sol default', () => {
@@ -297,72 +366,51 @@ describe('OpenAICodexProvider', () => {
 
   it.each([
     ['gpt-5', 'gpt-5.6-terra'],
-    ['gpt-5-codex-mini', 'gpt-5.4-mini'],
-    ['gpt-5.2-codex-mini', 'gpt-5.4-mini'],
+    ['gpt-5-codex-mini', 'gpt-5.6-luna'],
+    ['gpt-5.2-codex-mini', 'gpt-5.6-luna'],
     ['gpt-5.2-codex-max', 'gpt-5.6-sol'],
     ['gpt-5-codex-max', 'gpt-5.6-sol'],
-    ['gpt-5.1-codex', 'gpt-5.4'],
-    ['gpt-5.3-codex-mini', 'gpt-5.4-mini'],
+    ['gpt-5.1-codex', 'gpt-5.6-terra'],
+    ['gpt-5.3-codex-mini', 'gpt-5.6-luna'],
     ['gpt-5.3-codex-max', 'gpt-5.6-sol'],
-    ['codex-mini-latest', 'gpt-5.4-mini'],
+    ['codex-mini-latest', 'gpt-5.6-luna'],
   ])('repoints retired alias %s to %s', (legacyModelId, canonicalModelId) => {
     expect(OpenAICodexProvider.normalizeModelSelection(legacyModelId)).toBe(
       `openai-codex:${canonicalModelId}`
     );
   });
 
-  it('uses SDK-provided model discovery when available', async () => {
-    let codexConstructorOptions: Record<string, unknown> | undefined;
-    const listModels = vi.fn(async () => ({
-      data: [
-        {
-          id: 'gpt-5.4-mini',
-          name: 'GPT-5.4 Mini',
-          contextWindow: 400000,
-          maxTokens: 128000,
-        },
-      ],
-    }));
+  it('keeps a retired model id a session still has selected, instead of silently swapping it (#916)', () => {
+    expect(OpenAICodexProvider.normalizeModelSelection('openai-codex:gpt-5.4')).toBe('openai-codex:gpt-5.4');
+    expect(OpenAICodexProvider.normalizeModelSelection('openai-codex:gpt-5.5')).toBe('openai-codex:gpt-5.5');
+  });
 
-    const models = await OpenAICodexProvider.getModels('test-key', {
-      loadSdkModule: async () =>
-        ({
-          Codex: class {
-            constructor(options?: Record<string, unknown>) {
-              codexConstructorOptions = options;
-            }
-
-            listModels = listModels;
-
-            startThread = vi.fn();
-
-            resumeThread = vi.fn();
-          },
-        }) as any,
+  it('appends codex-named ids an API key can see after the catalog, without duplicating catalog entries', async () => {
+    openAiModelList.mockResolvedValueOnce({
+      data: [{ id: 'gpt-6-sol' }, { id: 'gpt-5.6-sol' }, { id: 'codex-experimental' }, { id: 'text-embedding-3-small' }],
     });
+    const callsBefore = openAiModelList.mock.calls.length;
 
-    expect(codexConstructorOptions).toEqual({ apiKey: 'test-key' });
-    expect(listModels).toHaveBeenCalledTimes(1);
-    expect(models).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: 'openai-codex:gpt-5.6-sol',
-        provider: 'openai-codex',
-      }),
-      expect.objectContaining({
-        id: 'openai-codex:gpt-5.5',
-        provider: 'openai-codex',
-      }),
-      expect.objectContaining({
-        id: 'openai-codex:gpt-5.4',
-        provider: 'openai-codex',
-      }),
-      expect.objectContaining({
-        id: 'openai-codex:gpt-5.4-mini',
-        name: 'GPT-5.4 Mini',
-        provider: 'openai-codex',
-      }),
-    ]));
-    expect(models).toHaveLength(10);
+    try {
+      // A key this file has not used before: discovered ids are cached per key for five minutes.
+      const models = await OpenAICodexProvider.getModels('catalog-extras-key', { listCatalog: async () => recordedCatalog() });
+
+      expect(openAiModelList.mock.calls.length).toBe(callsBefore + 1);
+      expect(models.map((model) => model.id)).toEqual([
+        'openai-codex:gpt-6.1-sol',
+        'openai-codex:gpt-6-astra',
+        'openai-codex:gpt-6.1-terra',
+        'openai-codex:gpt-6-sol',
+        'openai-codex:gpt-6-luna',
+        'openai-codex:gpt-5.6-sol',
+        'openai-codex:gpt-5.6-terra',
+        'openai-codex:gpt-5.6-luna',
+        'openai-codex:codex-experimental',
+      ]);
+    } finally {
+      openAiModelList.mockReset();
+      openAiModelList.mockResolvedValue({ data: [] });
+    }
   });
 
   it('preserves CLI auth when initialized without an API key', async () => {
@@ -1806,7 +1854,7 @@ describe('OpenAICodexProvider', () => {
 
     expect(startThread).toHaveBeenCalledTimes(1);
     const startArgs = (startThread.mock.calls as unknown as [Record<string, unknown>][])[0][0];
-    expect(startArgs.model).toBe('gpt-5.4-mini');
+    expect(startArgs.model).toBe('gpt-5.6-luna');
   });
 
   it('maps removed codex max aliases to supported model ids', async () => {

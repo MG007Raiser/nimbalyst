@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_EFFORT_LEVEL,
   DEFAULT_THINKING_MODE,
   clampEffortLevel,
+  clearRegisteredCodexEffortCeilings,
   getAvailableEffortLevels,
   parseThinkingMode,
+  registerCodexEffortCeilings,
+  registerCodexEffortCeilingsFromModels,
+  resolveCodexEffortCeiling,
   resolveEffortCeiling,
   resolveEffortLevel,
   resolveThinkingMode,
@@ -121,5 +125,43 @@ describe('per-model effort ceilings', () => {
     expect(getAvailableEffortLevels('gpt-5.4').map((l) => l.key)).toEqual([
       'low', 'medium', 'high', 'xhigh',
     ]);
+  });
+});
+
+describe('registered Codex effort ceilings (live catalog, #675)', () => {
+  afterEach(() => {
+    clearRegisteredCodexEffortCeilings();
+  });
+
+  it('gives an unlisted model the ceiling its catalog entry reports, bare or prefixed', () => {
+    expect(resolveCodexEffortCeiling('gpt-7-nova')).toBe('xhigh');
+
+    registerCodexEffortCeilings({ 'openai-codex:gpt-7-nova': 'ultra' });
+
+    expect(resolveCodexEffortCeiling('gpt-7-nova')).toBe('ultra');
+    expect(resolveEffortCeiling('GPT-7-Nova')).toBe('ultra');
+    expect(getAvailableEffortLevels('openai-codex:gpt-7-nova').map((l) => l.key)).toContain('ultra');
+    expect(clampEffortLevel('ultra', 'openai-codex:gpt-7-nova')).toBe('ultra');
+  });
+
+  it('lets the catalog override the static table and ignores unknown levels', () => {
+    registerCodexEffortCeilings({ 'gpt-6-astra': 'high', 'gpt-6-sol': 'turbo' as never, '': 'max' });
+
+    expect(resolveCodexEffortCeiling('gpt-6-astra')).toBe('high');
+    expect(resolveCodexEffortCeiling('gpt-6-sol')).toBe('ultra');
+  });
+
+  it('registers from a fetched catalog, Codex entries only', () => {
+    registerCodexEffortCeilingsFromModels([
+      { id: 'openai-codex:gpt-7-nova', effortCeiling: 'max' },
+      { id: 'openai-codex-acp:gpt-7-mini', effortCeiling: 'high' },
+      { id: 'claude-code:opus', effortCeiling: 'ultra' },
+      { id: 'openai-codex:gpt-6-luna' },
+    ]);
+
+    expect(resolveCodexEffortCeiling('gpt-7-nova')).toBe('max');
+    expect(resolveCodexEffortCeiling('gpt-7-mini')).toBe('high');
+    expect(resolveEffortCeiling('claude-code:opus')).toBe('max');
+    expect(resolveCodexEffortCeiling('gpt-6-luna')).toBe('max');
   });
 });
