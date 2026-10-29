@@ -1,6 +1,6 @@
 {
   "name": "@nimbalyst/electron",
-  "version": "0.82.4",
+  "version": "0.82.401",
   "private": true,
   "license": "MIT",
   "author": "Nimbalyst Team",
@@ -206,7 +206,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "nimbalyst",
+        "owner": "MG007Raiser",
         "repo": "nimbalyst",
         "releaseType": "release"
       }
@@ -520,7 +520,6 @@
       ],
       "artifactName": "${productName}-Windows-${arch}.${ext}",
       "signtoolOptions": {
-        "publisherName": "NIMBALYST, INC.",
         "signingHashAlgorithms": [
           "sha256"
         ],

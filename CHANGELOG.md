@@ -10,10 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+
+### Changed
+<!-- Changes to existing functionality go here -->
+
+### Fixed
+<!-- Bug fixes go here -->
+
+### Removed
+<!-- Removed features go here -->
+
+## [0.82.401] - 2026-10-29
+
+### Added
+<!-- New features go here -->
 - Dictation (alpha): a microphone button in the message composer records a take and transcribes it offline through Handy, the open-source speech-to-text app, then drops the text at the cursor for you to review and send. Settings > Dictation picks the Handy install and one of its downloaded models.
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- Fork build: in-app updates now come from the MG007Raiser/nimbalyst releases instead of the upstream project, and the installer is unsigned (Windows SmartScreen will warn once on install).
 
 ### Fixed
 <!-- Bug fixes go here -->
