@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Dictation (alpha): while a take is being recorded or transcribed, a "Listening..." or "Transcribing..." row with pulsing dots and an elapsed-seconds counter appears above the prompt box, so you can see the microphone is still on.
 
 ### Changed
 <!-- Changes to existing functionality go here -->

@@ -12,7 +12,8 @@ import { AttachmentPreviewList } from '../AgenticCoding/AttachmentPreviewList';
 import type { AIMode } from './ModeTag';
 import { AIInputControls } from './AIInputControls';
 import { registerPendingVoiceCommandSetter } from './VoiceModeButton.tsx';
-import { DictationButton } from './DictationButton';
+import { DictationButton, type DictationPhase } from './DictationButton';
+import { DictationStatus } from './DictationStatus';
 import { insertDictatedText } from '../../utils/dictationInsert';
 import { PendingVoiceCommand } from './PendingVoiceCommand';
 import { pendingVoiceCommandAtom, voiceActiveSessionIdAtom, type PendingVoiceCommand as PendingVoiceCommandType } from '../../store/atoms/voiceModeState';
@@ -324,6 +325,10 @@ export const AIInput = forwardRef<AIInputRef, AIInputProps>(
         }
       });
     }, [pushSnapshot, captureSnapshot, onChange, onModelChange, currentModel, onEffortLevelChange, effortLevel]);
+
+    // While a take is being recorded or transcribed the composer shows a
+    // status row (dots, label, elapsed seconds) above the prompt box.
+    const [dictationPhase, setDictationPhase] = useState<DictationPhase>('idle');
 
     // Dictated text (Handy) lands at the caret, replacing any selection, as
     // one undo step. Nothing is sent: the operator reviews and presses Enter.
@@ -1415,6 +1420,9 @@ export const AIInput = forwardRef<AIInputRef, AIInputProps>(
         {/* Pending voice command with countdown */}
         {sessionId && <PendingVoiceCommand sessionId={sessionId} onSubmit={handlePendingVoiceCommandSubmit} />}
 
+        {/* Dictation in progress: listening / transcribing row with elapsed time */}
+        {!isMemoryMode && dictationPhase !== 'idle' && <DictationStatus phase={dictationPhase} />}
+
         {/* Memory mode indicator */}
         {isMemoryMode && (
           <MemoryPromptIndicator
@@ -1545,7 +1553,7 @@ export const AIInput = forwardRef<AIInputRef, AIInputProps>(
           )}
           </div>
           {!isMemoryMode && (
-            <DictationButton onTranscript={handleDictationTranscript} disabled={disabled} />
+            <DictationButton onTranscript={handleDictationTranscript} onPhaseChange={setDictationPhase} disabled={disabled} />
           )}
           {isMemoryMode ? (
             // Memory mode: show save button

@@ -7,16 +7,18 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import { DictationRecorder } from '../../utils/dictationRecorder';
 
-type DictationPhase = 'idle' | 'recording' | 'transcribing';
+export type DictationPhase = 'idle' | 'recording' | 'transcribing';
 
 interface DictationButtonProps {
   onTranscript: (text: string) => void;
+  /** Fires on every phase change so the composer can show a listening/transcribing row. */
+  onPhaseChange?: (phase: DictationPhase) => void;
   disabled?: boolean;
 }
 
 const ERROR_DISPLAY_MS = 6_000;
 
-export function DictationButton({ onTranscript, disabled = false }: DictationButtonProps) {
+export function DictationButton({ onTranscript, onPhaseChange, disabled = false }: DictationButtonProps) {
   const [phase, setPhase] = useState<DictationPhase>('idle');
   const [available, setAvailable] = useState<boolean | null>(null);
   const [unavailableReason, setUnavailableReason] = useState<string>('');
@@ -24,6 +26,12 @@ export function DictationButton({ onTranscript, disabled = false }: DictationBut
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const recorderRef = useRef<DictationRecorder | null>(null);
   const mountedRef = useRef(true);
+  const onPhaseChangeRef = useRef(onPhaseChange);
+  onPhaseChangeRef.current = onPhaseChange;
+
+  useEffect(() => {
+    onPhaseChangeRef.current?.(phase);
+  }, [phase]);
 
   useEffect(() => {
     mountedRef.current = true;

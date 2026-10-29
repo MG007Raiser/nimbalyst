@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DictationButton } from '../DictationButton';
+import { DictationStatus, dictationStatusLabel } from '../DictationStatus';
 
 const recorder = {
   start: vi.fn(async () => {}),
@@ -97,5 +98,44 @@ describe('DictationButton', () => {
 
     expect(onTranscript).not.toHaveBeenCalled();
     expect((screen.getByRole('button') as HTMLButtonElement).title).toBe('model parakeet-x is not downloaded');
+  });
+
+  it('reports every phase change so the composer can show the listening row', async () => {
+    const onPhaseChange = vi.fn();
+    render(<DictationButton onTranscript={vi.fn()} onPhaseChange={onPhaseChange} />);
+    await settle();
+    fireEvent.click(screen.getByRole('button'));
+    await settle();
+    fireEvent.click(screen.getByRole('button'));
+    await settle();
+
+    expect(onPhaseChange.mock.calls.map(([phase]) => phase)).toEqual(['idle', 'recording', 'transcribing', 'idle']);
+  });
+});
+
+describe('DictationStatus', () => {
+  it('names the phase and counts seconds while a take is in progress', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<DictationStatus phase="recording" />);
+      expect(screen.getByRole('status').getAttribute('data-dictation-status')).toBe('recording');
+      expect(screen.getByText('Listening...')).toBeDefined();
+      expect(screen.getByTestId('dictation-elapsed').textContent).toBe('0s');
+
+      await act(async () => {
+        vi.advanceTimersByTime(2_600);
+      });
+      expect(screen.getByTestId('dictation-elapsed').textContent).toBe('2s');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders nothing when idle and switches wording for transcription', () => {
+    const { container, rerender } = render(<DictationStatus phase="idle" />);
+    expect(container.querySelector('.dictation-status')).toBeNull();
+    rerender(<DictationStatus phase="transcribing" />);
+    expect(screen.getByText('Transcribing...')).toBeDefined();
+    expect(dictationStatusLabel('idle')).toBeNull();
   });
 });
