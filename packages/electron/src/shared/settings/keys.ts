@@ -290,6 +290,21 @@ export const SETTINGS_REGISTRY = {
     { store: 'app-settings', path: 'teamMessages.density' },
     'comfortable',
   ),
+  /**
+   * Offline dictation through Handy (composer microphone button). An empty
+   * path means auto-detect the per-user install; an empty model means the
+   * model selected inside Handy.
+   */
+  'dictation.handyPath': setting(
+    z.string(),
+    { store: 'app-settings', path: 'dictation.handyPath' },
+    '',
+  ),
+  'dictation.model': setting(
+    z.string(),
+    { store: 'app-settings', path: 'dictation.model' },
+    '',
+  ),
 } as const;
 
 export type SettingKey = keyof typeof SETTINGS_REGISTRY;

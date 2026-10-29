@@ -53,6 +53,7 @@ import { registerHistoryHandlers } from './ipc/HistoryHandlers';
 import { registerSessionHandlers } from './ipc/SessionHandlers';
 import { registerSessionStateHandlers, shutdownSessionStateHandlers, hasActiveStreamingSessions } from './ipc/SessionStateHandlers';
 import { registerAttachmentHandlers } from './ipc/AttachmentHandlers';
+import { registerDictationHandlers } from './ipc/DictationHandlers';
 import { registerThemeHandlers } from './ipc/ThemeHandlers';
 import { registerWorkspaceWatcherHandlers } from './file/WorkspaceWatcher';
 import { setupSessionFileHandlers } from './ipc/SessionFileHandlers';
@@ -1734,6 +1735,7 @@ app.whenReady().then(async () => {
     registerActionPromptHandlers();
     await registerUsageAnalyticsHandlers();
     registerAttachmentHandlers();
+    registerDictationHandlers();
     registerProjectSelectionHandlers();
     registerMultiProjectRailHandlers();
     registerProjectAppearanceHandlers();

@@ -12,6 +12,8 @@ import { AttachmentPreviewList } from '../AgenticCoding/AttachmentPreviewList';
 import type { AIMode } from './ModeTag';
 import { AIInputControls } from './AIInputControls';
 import { registerPendingVoiceCommandSetter } from './VoiceModeButton.tsx';
+import { DictationButton } from './DictationButton';
+import { insertDictatedText } from '../../utils/dictationInsert';
 import { PendingVoiceCommand } from './PendingVoiceCommand';
 import { pendingVoiceCommandAtom, voiceActiveSessionIdAtom, type PendingVoiceCommand as PendingVoiceCommandType } from '../../store/atoms/voiceModeState';
 import type { ActionPrompt, ActionPickerSettings } from '../../store/atoms/actionPrompts';
@@ -322,6 +324,28 @@ export const AIInput = forwardRef<AIInputRef, AIInputProps>(
         }
       });
     }, [pushSnapshot, captureSnapshot, onChange, onModelChange, currentModel, onEffortLevelChange, effortLevel]);
+
+    // Dictated text (Handy) lands at the caret, replacing any selection, as
+    // one undo step. Nothing is sent: the operator reviews and presses Enter.
+    const handleDictationTranscript = useCallback((transcript: string) => {
+      const ta = textareaRef.current;
+      const start = ta?.selectionStart ?? value.length;
+      const end = ta?.selectionEnd ?? value.length;
+      const next = insertDictatedText(value, start, end, transcript);
+      if (next.value === value) return;
+      pushSnapshot(captureSnapshot(), { boundary: true });
+      onChange(next.value);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        try {
+          el.setSelectionRange(next.caret, next.caret);
+        } catch {
+          // best-effort caret placement
+        }
+      });
+    }, [value, pushSnapshot, captureSnapshot, onChange]);
 
     // File mention state via Jotai atoms
     // Subscribes directly to atoms instead of receiving props (no prop drilling)
@@ -1520,6 +1544,9 @@ export const AIInput = forwardRef<AIInputRef, AIInputProps>(
             />
           )}
           </div>
+          {!isMemoryMode && (
+            <DictationButton onTranscript={handleDictationTranscript} disabled={disabled} />
+          )}
           {isMemoryMode ? (
             // Memory mode: show save button
             <MemorySaveButton

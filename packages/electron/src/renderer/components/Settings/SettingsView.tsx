@@ -41,6 +41,7 @@ import { AgentFeaturesPanel } from './AgentFeaturesPanel';
 import { BetaFeaturesPanel } from '../GlobalSettings/panels/BetaFeaturesPanel';
 import { NotificationsPanel } from '../GlobalSettings/panels/NotificationsPanel';
 import { VoiceModePanel } from './VoiceModePanel';
+import { DictationPanel } from '../GlobalSettings/panels/DictationPanel';
 import { MCPServersPanel } from '../GlobalSettings/panels/MCPServersPanel';
 import { ToolsMcpPanel } from './panels/ToolsMcpPanel';
 import { CloudflareSandboxesPanel } from './panels/CloudflareSandboxesPanel';
@@ -967,6 +968,8 @@ export function SettingsView({
       case 'voice-mode':
         // VoiceModePanel is now self-contained - uses Jotai atoms directly
         return <VoiceModePanel workspacePath={workspacePath ?? undefined} />;
+      case 'dictation':
+        return <DictationPanel />;
       case 'installed-extensions':
         return (
           <InstalledExtensionsPanel

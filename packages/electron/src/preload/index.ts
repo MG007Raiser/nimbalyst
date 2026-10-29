@@ -589,6 +589,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // settings:changed is broadcast from main on every mutation.
   settingsGetAll: () => ipcRenderer.invoke('settings:getAll'),
   settingsSet: (key: string, value: unknown) => ipcRenderer.invoke('settings:set', key, value),
+  // Offline dictation through Handy: the composer records, main runs Handy
+  // headlessly on the take and returns the text (see ipc/DictationHandlers.ts).
+  dictation: {
+    status: () => ipcRenderer.invoke('dictation:status'),
+    listModels: () => ipcRenderer.invoke('dictation:list-models'),
+    transcribe: (request: { pcm16: Uint8Array; sampleRate: number }) =>
+      ipcRenderer.invoke('dictation:transcribe', request),
+    cancel: () => ipcRenderer.invoke('dictation:cancel'),
+    detect: () => ipcRenderer.invoke('dictation:detect'),
+  },
   settingsDelete: (key: string) => ipcRenderer.invoke('settings:delete', key),
   onSettingsChanged: (callback: (payload: { key: string; value: unknown }) => void) => {
     const handler = (_event: any, payload: { key: string; value: unknown }) => callback(payload);

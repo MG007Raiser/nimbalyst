@@ -5,6 +5,7 @@ export type ApplicationSettingsCategory =
   | 'notifications'
   | 'themes'
   | 'voice-mode'
+  | 'dictation'
   | 'advanced'
   | 'database'
   | 'agent-features'
@@ -141,6 +142,7 @@ const builtinSettingsRouteDefinitions: readonly Omit<BuiltinSettingsRoute, 'sour
   { id: 'notifications', scope: 'application', group: 'Application', label: 'Notifications', icon: 'notifications' },
   { id: 'themes', scope: 'application', group: 'Application', label: 'Themes', icon: 'palette' },
   { id: 'voice-mode', scope: 'application', group: 'Application', label: 'Voice Mode', icon: 'mic', isAlpha: true },
+  { id: 'dictation', scope: 'application', group: 'Application', label: 'Dictation', icon: 'record_voice_over', isAlpha: true },
   { id: 'agent-features', scope: 'application', group: 'Application', label: 'Agent Features', icon: 'science', isAlpha: true },
   { id: 'cloudflare-sandboxes', scope: 'application', group: 'Application', label: 'Cloudflare Sandboxes', icon: 'cloud', isAlpha: true, isAvailable: developerOnly },
   { id: 'advanced', scope: 'application', group: 'Application', label: 'Advanced', icon: 'settings' },

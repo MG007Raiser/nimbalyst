@@ -530,6 +530,20 @@ interface ElectronAPI {
   // single per-key broadcast. See shared/settings/keys.ts for the registry.
   settingsGetAll: () => Promise<Record<string, unknown>>;
   settingsSet: (key: string, value: unknown) => Promise<{ ok: true }>;
+  /** Offline dictation through Handy (composer microphone button). */
+  dictation: {
+    status: () => Promise<{ available: boolean; binaryPath?: string; configuredPath: string; model: string; reason?: string }>;
+    listModels: () => Promise<
+      | { success: true; models: Array<{ id: string; name: string; engineType: string; isDownloaded: boolean; sizeMb?: number; supportedLanguages?: string[]; isRecommended?: boolean }> }
+      | { success: false; error: string }
+    >;
+    transcribe: (request: { pcm16: Uint8Array; sampleRate: number }) => Promise<
+      | { success: true; text: string; timings: { audioSeconds?: number; loadMs?: number; transcribeMs?: number }; model?: string }
+      | { success: false; error: string; cancelled?: boolean }
+    >;
+    cancel: () => Promise<{ cancelled: boolean }>;
+    detect: () => Promise<{ path: string; hostname: string }>;
+  };
   settingsDelete: (key: string) => Promise<{ ok: true }>;
   onSettingsChanged: (callback: (payload: { key: string; value: unknown }) => void) => () => void;
   onAppSettingsChanged: (callback: (payload: { key: string; value: unknown }) => void) => () => void;

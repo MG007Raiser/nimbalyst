@@ -248,6 +248,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Hands-free brainstorm loop — talk an idea through, kick off a plan (`/design`), have the agent read the written plan back to refine it by voice, then `/implement`; ask "is it done yet?" anytime for live task status
 - Voice agent tool calls (memory lookups, coding-agent questions, and more) are recorded in the voice session transcript and render as tool widgets, including a dedicated memory-recall widget showing the query and the returned source documents (title + snippet)
 - Available on desktop and iOS; native iOS defaults to Realtime and offers GPT Live as an opt-in preview
+- Dictation (alpha, desktop): a microphone button in the composer records a take and transcribes it offline through Handy (open-source speech-to-text), inserting the text at the cursor for review; Settings > Dictation picks the Handy install and one of its downloaded models. No API key, no network.
 
 ## Mobile (iOS)
 

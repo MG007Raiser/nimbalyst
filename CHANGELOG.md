@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Dictation (alpha): a microphone button in the message composer records a take and transcribes it offline through Handy, the open-source speech-to-text app, then drops the text at the cursor for you to review and send. Settings > Dictation picks the Handy install and one of its downloaded models.
 
 ### Changed
 <!-- Changes to existing functionality go here -->
