@@ -20,7 +20,10 @@ function validateWindowsUpdaterConfig() {
   const windowsConfig = packageJson.build?.win;
   const signtoolOptions = windowsConfig?.signtoolOptions;
 
-  if (publisherNames.length === 0) {
+  // An unsigned build (no DigiCert key) must not carry a publisherName:
+  // electron-updater would then verify the downloaded installer's Authenticode
+  // signature and reject every update. Fork builds are unsigned.
+  if (publisherNames.length === 0 && process.env.DIGICERT_KEYPAIR_ALIAS) {
     throw new Error(
       'Missing build.win.signtoolOptions.publisherName in packages/electron/package.json. ' +
       'Windows auto-update verification relies on this value being bundled into app-update.yml.'
@@ -50,6 +53,13 @@ function validateWindowsUpdaterConfig() {
   const signingHashAlgorithms = asArray(signtoolOptions?.signingHashAlgorithms);
   if (signingHashAlgorithms.length !== 1 || signingHashAlgorithms[0] !== 'sha256') {
     throw new Error('Windows DigiCert signing must use one SHA-256 signing pass');
+  }
+
+  if (publisherNames.length === 0) {
+    console.warn(
+      'Windows build is unsigned: no build.win.signtoolOptions.publisherName, so the updater will not verify installer signatures.'
+    );
+    return;
   }
 
   console.log(

@@ -204,7 +204,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "nimbalyst",
+        "owner": "MG007Raiser",
         "repo": "nimbalyst",
         "releaseType": "release"
       }
@@ -527,7 +527,6 @@
       ],
       "artifactName": "${productName}-Windows-${arch}.${ext}",
       "signtoolOptions": {
-        "publisherName": "NIMBALYST, INC.",
         "signingHashAlgorithms": [
           "sha256"
         ],
