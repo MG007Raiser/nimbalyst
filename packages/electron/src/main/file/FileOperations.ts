@@ -2,6 +2,7 @@ import { BrowserWindow, type WebContents } from 'electron';
 import { basename } from 'path';
 import { writeFileAtomicSync } from './safeFileWrite';
 import { windowStates, getWindowId, findWindowByFilePath } from '../window/WindowManager';
+import { reuseOpenWorkspaceWindow } from '../window/reuseOpenWorkspaceWindow';
 import { addToRecentItems } from '../utils/store';
 
 export interface PendingFileOpen {
@@ -29,8 +30,10 @@ export function acknowledgeFileOpen(sender: WebContents, workspacePath: string, 
 }
 
 // Function to open a file in a window - sends open-document event to renderer
-// which triggers handleWorkspaceFileSelect to load content and create tab
-export function loadFileIntoWindow(window: BrowserWindow, filePath: string) {
+// which triggers handleWorkspaceFileSelect to load content and create tab.
+// `workspacePath` names the rail project that opens the file; without it the
+// project the window is showing does.
+export function loadFileIntoWindow(window: BrowserWindow, filePath: string, workspacePath?: string) {
     try {
         const windowId = getWindowId(window);
         if (windowId === null) {
@@ -46,21 +49,24 @@ export function loadFileIntoWindow(window: BrowserWindow, filePath: string) {
             console.error('[LOAD_FILE] No window state found for window ID:', windowId);
         }
 
-        let requests = pendingFileOpens.get(window.webContents);
+        // Captured once: the BrowserWindow.webContents getter throws after the
+        // window is destroyed, which is when the 'destroyed' handler runs.
+        const contents = window.webContents;
+        let requests = pendingFileOpens.get(contents);
         if (!requests) {
             requests = [];
-            pendingFileOpens.set(window.webContents, requests);
-            window.webContents.once('destroyed', () => pendingFileOpens.delete(window.webContents));
+            pendingFileOpens.set(contents, requests);
+            contents.once('destroyed', () => pendingFileOpens.delete(contents));
         }
         const request: PendingFileOpen = {
             requestId: ++nextFileOpenId,
             path: filePath,
-            workspacePath: state?.activeWorkspacePath ?? state?.workspacePath ?? undefined,
+            workspacePath: workspacePath ?? state?.activeWorkspacePath ?? state?.workspacePath ?? undefined,
         };
         requests.push(request);
         // This is a notification, not proof of delivery. A newly mounted
         // renderer also pulls the queue, closing the subscribe/startup race.
-        window.webContents.send('open-document', request);
+        contents.send('open-document', request);
 
         // Set represented filename for macOS
         if (process.platform === 'darwin') {
@@ -73,6 +79,19 @@ export function loadFileIntoWindow(window: BrowserWindow, filePath: string) {
     } catch (error) {
         console.error('[LOAD_FILE] Error loading file from OS:', error);
     }
+}
+
+/**
+ * Open a file in the window whose rail holds its project, switching that window
+ * to the project first. The window may be showing another rail project, and a
+ * request stamped with that project would open the file there.
+ * Returns false when no open window holds the project.
+ */
+export function loadFileIntoWorkspaceWindow(workspacePath: string, filePath: string): boolean {
+    const match = reuseOpenWorkspaceWindow(workspacePath);
+    if (!match) return false;
+    loadFileIntoWindow(match.window, filePath, match.matchedPath);
+    return true;
 }
 
 // Re-send a file the OS asked for again to the window that last loaded it. state.filePath

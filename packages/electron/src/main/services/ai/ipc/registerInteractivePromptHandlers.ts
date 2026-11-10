@@ -17,6 +17,7 @@ import { hasOpenPrompts, isPromptOpen } from '../openPromptRegistry';
 import { sessionFallbackMayCarryAnswer } from '../../../mcp/tools/interactivePromptFallback';
 import { hasLiveInteractivePrompt } from '../../../mcp/tools/interactivePromptLiveness';
 import { type AIProviderType } from '@nimbalyst/runtime/ai/server/types';
+import type { ExitPlanModeResponse } from '@nimbalyst/runtime/ai/exitPlanModeDeferral';
 import { ipcMain } from 'electron';
 
 /**
@@ -37,7 +38,7 @@ export function registerInteractivePromptHandlers(ctx: AIServiceContext): void {
     sessionId => ctx.publishQueueStateToSync(sessionId),
   );
   // Handle ExitPlanMode confirmation response from renderer
-  safeHandle('ai:exitPlanModeConfirmResponse', async (event, requestId: string, sessionId: string, response: { approved: boolean; clearContext?: boolean; feedback?: string }) => {
+  safeHandle('ai:exitPlanModeConfirmResponse', async (event, requestId: string, sessionId: string, response: ExitPlanModeResponse) => {
     logger.main.info(`[AIService] ExitPlanMode confirmation response: requestId=${requestId}, approved=${response.approved}, clearContext=${response.clearContext}, hasFeedback=${!!response.feedback}`);
 
     // Use repository directly - we just need session metadata (provider type),
@@ -143,9 +144,9 @@ export function registerInteractivePromptHandlers(ctx: AIServiceContext): void {
     // Read it before rejecting: the rejection's cancelled event resolves it.
     const providerHeldQuestion = isPromptOpen(resolvedSessionId, questionId);
     const providerSupportsCancel = !!provider && typeof (provider as any).rejectAskUserQuestion === 'function';
-    if (providerSupportsCancel) {
-      (provider as any).rejectAskUserQuestion(questionId, new Error('User cancelled'));
-    }
+    // 'dismissed': the CLI takes the cancel as an answer and the turn goes on.
+    const dismissedIntoTurn = providerSupportsCancel
+      && (provider as any).rejectAskUserQuestion(questionId, new Error('User cancelled')) === 'dismissed';
 
     const mcpQuestionResponseChannel = `ask-user-question-response:${resolvedSessionId || 'unknown'}:${questionId}`;
     const hasMcpWaiter = ipcMain.listenerCount(mcpQuestionResponseChannel) > 0;
@@ -231,8 +232,9 @@ export function registerInteractivePromptHandlers(ctx: AIServiceContext): void {
     // cancelled result instead of force-aborting the provider. Immediate abort can
     // interrupt the in-flight MCP request before the cancellation result is delivered.
     // Only the SDK-native question blocks the provider's own turn, so only it
-    // aborts; any other card reaching here has a waiter of its own.
-    if (providerHeldQuestion && !hasMcpWaiter && !hasSessionFallbackWaiter) {
+    // aborts; any other card reaching here has a waiter of its own. A CLI that
+    // took the cancel as a dismissal answer keeps working, so no abort then.
+    if (providerHeldQuestion && !dismissedIntoTurn && !hasMcpWaiter && !hasSessionFallbackWaiter) {
       provider?.abort();
     }
 

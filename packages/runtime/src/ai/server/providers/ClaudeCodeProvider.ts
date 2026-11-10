@@ -86,6 +86,8 @@ import {
 } from './claudeCode/resultChunkUtils';
 
 import {
+  ASK_USER_QUESTION_UNANSWERED_CAPABILITY,
+  AskUserQuestionDismissedError,
   handleAskUserQuestionTool,
   pollForAskUserQuestionResponse,
   type PendingAskUserQuestionEntry,
@@ -156,6 +158,7 @@ import { buildTurnCompleteUsage, finishTurn, handleTurnError, type TurnEpilogueH
 import { fromDbBoolean } from '../../../core/dbBoolean';
 import { agentToolActivity } from '../agentToolActivity';
 import { applyTaskListMutation, sortTaskList, type TaskListItem } from './claudeCode/taskListReconstruct';
+import { exitPlanModeDenialReason, type ExitPlanModeResponse } from '../../exitPlanModeDeferral';
 
 
 /**
@@ -372,6 +375,7 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
 
   public static setCustomClaudeCodePathLoader(loader: ((workspacePath: string) => string) | null): void { ClaudeCodeDeps.setCustomClaudeCodePathLoader(loader); }
   public static setPromptSuggestionsEnabledLoader(loader: (() => boolean) | null): void { ClaudeCodeDeps.setPromptSuggestionsEnabledLoader(loader); }
+  public static setClaudeInChromeEnabledLoader(loader: (() => boolean) | null): void { ClaudeCodeDeps.setClaudeInChromeEnabledLoader(loader); }
 
   constructor() {
     super();
@@ -506,13 +510,17 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
 
   // ExitPlanMode confirmation response type
   private pendingExitPlanModeConfirmations: Map<string, {
-    resolve: (response: { approved: boolean; clearContext?: boolean; feedback?: string }) => void;
+    resolve: (response: ExitPlanModeResponse) => void;
     reject: (error: Error) => void;
   }> = new Map();
 
   // AskUserQuestion tool - stores pending question resolvers
   // When Claude calls AskUserQuestion, we block until the UI provides answers via IPC
   private pendingAskUserQuestions: Map<string, PendingAskUserQuestionEntry> = new Map();
+
+  // Protocol capabilities from the latest system/init frame. Empty on CLIs that
+  // predate the field, so feature-gated behavior stays off for them.
+  private cliCapabilities: ReadonlySet<string> = new Set();
 
   static readonly DEFAULT_MODEL = ClaudeCodeDeps.DEFAULT_MODEL;
 
@@ -706,6 +714,15 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
       );
     }
 
+    // A newer sendMessage replaces this controller, which is how this turn knows
+    // it no longer owns the provider's live fields.
+    const turnController = this.abortController;
+    let turnQuery: Query | null = null;
+    // The grace timer belongs to this turn too: once superseded it must neither
+    // outlive the turn nor end the newer turn's prompt stream.
+    let turnPromptController: PromptStreamController | null = null;
+    let turnPromptEndTimer: ReturnType<typeof setTimeout> | null = null;
+
     // Clear edited files tracker for new turn
     this.toolHooksService.clearEditedFiles();
 
@@ -748,6 +765,9 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
           currentMode: this.currentMode,
           metaAgentAllowedTools: BaseAgentProvider.META_AGENT_ALLOWED_TOOLS,
           publishSdkResult: (result) => {
+            // A turn superseded while its prompt was being built must not replace
+            // the newer turn's prompt stream.
+            if (this.abortController !== turnController) return;
             this.helperMethod = result.helperMethod;
             this.promptController = adopted ? adopted.promptController : result.promptController;
           },
@@ -755,6 +775,14 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
         state,
         { documentContext, sessionId, workspacePath, attachments, paths, prepared },
       );
+
+      // Superseded or stopped while the prompt was being built. Starting now would
+      // spawn a subprocess nothing can stop.
+      if (this.abortController !== turnController) {
+        builtPromptController.end('superseded');
+        return;
+      }
+      turnPromptController = adopted ? adopted.promptController : builtPromptController;
 
       const queryCallStart = Date.now();
 
@@ -767,6 +795,7 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
       if (!adopted) this.liveQueryModelVariant = this.resolveModelVariant();
 
       this.leadQuery = leadQuery as unknown as Query;
+      turnQuery = this.leadQuery;
       ClaudeCodeProvider.streamingInstances.add(this);
       this.teammateIdleMessagePending = false;
       // Reset per-turn background-drain state (defensive; also reset in finally).
@@ -847,16 +876,17 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
       // every one that outran it. Silence from a shell is not a stall. See #1355.
       const shellDrainMs = resolveShellDrainMs();
       const armPromptEndTimer = (reason: string) => {
-        if (this.promptEndTimer) {
-          clearTimeout(this.promptEndTimer);
+        if (turnPromptEndTimer) {
+          clearTimeout(turnPromptEndTimer);
         }
         const delay = resolvePromptEndDelay(this.activeTasks.values(), {
           idle: PROMPT_GRACE_MS,
           subagent: SUBAGENT_DRAIN_GRACE_MS,
           shell: shellDrainMs,
         });
-        this.promptEndTimer = setTimeout(() => {
-          this.promptEndTimer = null;
+        const timer = setTimeout(() => {
+          if (this.promptEndTimer === timer) this.promptEndTimer = null;
+          turnPromptEndTimer = null;
           // Record that WE ended the stream on a still-running task. Ending it
           // closes the CLI's stdin, which kills every live background task with
           // the process — they then report 'stopped', indistinguishable from a
@@ -865,8 +895,10 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
             this.drainGraceExpired = true;
             console.warn(`[CLAUDE-CODE] SUBAGENT_DRAIN: grace window (${delay}ms) expired with ${countRunningTasks(this.activeTasks.values())} task(s) still running; ending stream will kill them`);
           }
-          this.promptController?.end(reason);
+          turnPromptController?.end(reason);
         }, delay);
+        turnPromptEndTimer = timer;
+        this.promptEndTimer = timer;
       };
 
       // Stream the response
@@ -1643,6 +1675,19 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
     } finally {
       if (this.drainExitCause === 'handoff' && this.drainHandoff && !this.drainHandoff.cancelled) {
         this.releaseToFollowUpTurn(this.drainHandoff, sessionId);
+      } else if (this.abortController !== null && this.abortController !== turnController) {
+        // A newer turn owns the live fields. Clearing them here would orphan its
+        // subprocess, so only this turn's own subprocess is stopped.
+        if (turnPromptEndTimer) {
+          clearTimeout(turnPromptEndTimer);
+          if (this.promptEndTimer === turnPromptEndTimer) this.promptEndTimer = null;
+          turnPromptEndTimer = null;
+        }
+        try {
+          turnQuery?.close();
+        } catch (error) {
+          console.warn('[CLAUDE-CODE] Closing superseded query failed:', error);
+        }
       } else {
         // A handoff the follow-up gave up on is a supersede: the follow-up
         // starts its own query and aborts this one.
@@ -2344,6 +2389,11 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
       void hydrateTaskListItems(sessionId, this.taskListItems);
     }
 
+    // Every turn's init carries the current list; the newest frame wins.
+    this.cliCapabilities = new Set(
+      Array.isArray(chunk.capabilities) ? chunk.capabilities.filter((c: unknown) => typeof c === 'string') : [],
+    );
+
     if (chunk.slash_commands && Array.isArray(chunk.slash_commands)) {
       this.slashCommands = chunk.slash_commands;
       ClaudeCodeProvider.cachedSdkSlashCommands = chunk.slash_commands;
@@ -2826,7 +2876,7 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
     const planSummary = input?.plan || '';
 
     // Create a promise that will be resolved when user responds via the widget
-    const confirmationPromise = new Promise<{ approved: boolean; clearContext?: boolean; feedback?: string }>((resolve, reject) => {
+    const confirmationPromise = new Promise<ExitPlanModeResponse>((resolve, reject) => {
       this.pendingExitPlanModeConfirmations.set(requestId, { resolve, reject });
 
       if (options.signal) {
@@ -2887,12 +2937,9 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
         this.currentMode = 'agent';
         return { behavior: 'allow', updatedInput: input };
       } else {
-        const feedbackText = response.feedback
-          ? `\n\nUser feedback: "${response.feedback}"`
-          : '';
         return {
           behavior: 'deny',
-          message: `The user chose to continue planning.${feedbackText}`,
+          message: exitPlanModeDenialReason(response),
         };
       }
     } catch (error) {
@@ -2914,7 +2961,7 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
    */
   public resolveExitPlanModeConfirmation(
     requestId: string,
-    response: { approved: boolean; clearContext?: boolean; feedback?: string },
+    response: ExitPlanModeResponse,
     sessionId?: string,
     respondedBy: 'desktop' | 'mobile' = 'desktop'
   ): void {
@@ -3016,16 +3063,23 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
   }
 
   /**
-   * Reject a pending AskUserQuestion request (e.g., on cancel/abort)
+   * Reject a pending AskUserQuestion request because the user dismissed it
+   * (the widget's cancel on desktop or mobile). Turn aborts go through
+   * `rejectAllPendingQuestions` instead.
+   *
+   * Returns 'dismissed' when the CLI takes the dismissal as an answer
+   * (`ask_user_question_unanswered_v1`): the turn continues and the model reads
+   * it, so the caller must not abort.
    */
-  public rejectAskUserQuestion(questionId: string, error: Error): void {
+  public rejectAskUserQuestion(questionId: string, error: Error): 'dismissed' | void {
     const pending = this.pendingAskUserQuestions.get(questionId);
     if (pending) {
-      pending.reject(error);
+      pending.reject(error instanceof AskUserQuestionDismissedError ? error : new AskUserQuestionDismissedError(error.message));
       this.pendingAskUserQuestions.delete(questionId);
       // The cancelled tool result is logged by handleAskUserQuestionTool's catch block,
       // which fires when the promise rejects. It correctly handles all questionId formats
       // (both legacy ask-{sessionId}-{timestamp} and new toolu_... Claude tool use IDs).
+      if (this.cliCapabilities.has(ASK_USER_QUESTION_UNANSWERED_CAPABILITY)) return 'dismissed';
     }
   }
 
@@ -3507,6 +3561,7 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
       {
         sessionId,
         pendingAskUserQuestions: this.pendingAskUserQuestions,
+        supportsUnansweredAnnotation: () => this.cliCapabilities.has(ASK_USER_QUESTION_UNANSWERED_CAPABILITY),
         pollForResponse: (resolvedSessionId, questionId, signal) =>
           this.pollForAskUserQuestionResponse(resolvedSessionId, questionId, signal),
         emit: (event, payload) => this.emit(event, payload),

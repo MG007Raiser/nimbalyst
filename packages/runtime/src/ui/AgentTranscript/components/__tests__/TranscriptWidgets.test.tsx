@@ -22,6 +22,10 @@ import * as rtl from '@testing-library/react';
 import { createStore, Provider as JotaiProvider } from 'jotai';
 import type { TranscriptViewMessage } from '../../../../ai/server/transcript/TranscriptProjector';
 import type { CustomToolWidgetProps } from '../CustomToolWidgets/index';
+import type { InteractiveWidgetHost } from '../CustomToolWidgets/InteractiveWidgetHost';
+import { exitPlanModeDenialReason } from '../../../../ai/exitPlanModeDeferral';
+import { store as globalStore } from '../../../../store/store';
+import { setInteractiveWidgetHost } from '../../../../store/atoms/interactiveWidgetHost';
 
 const { render, screen, fireEvent, waitFor } = rtl;
 
@@ -1328,6 +1332,25 @@ describe('GitCommitConfirmationWidget', () => {
     expect(gitCommit).not.toHaveBeenCalled();
   });
 
+  // #1890: the host's recorded decision wins over the live preference.
+  it.each([
+    [true, false, 'pending'],
+    [false, true, 'committing'],
+  ])('renders from the host decision (preference=%s, autoApproved=%s)', async (pref, autoApproved, state) => {
+    const { interactiveWidgetHostAtom } = await import('../../../../store/atoms/interactiveWidgetHost');
+    const testStore = createStore();
+    testStore.set(interactiveWidgetHostAtom('host-decision'), {
+      autoCommitEnabled: pref, gitCommit: vi.fn(), trackEvent: vi.fn(),
+    } as unknown as import('../CustomToolWidgets/InteractiveWidgetHost').InteractiveWidgetHost);
+    const message = makeToolMessage('git_commit_proposal', {
+      commitMessage: 'fix: x', filesToStage: ['file.ts'], autoApproved,
+    });
+    render(<JotaiProvider store={testStore}>
+      <GitCommitConfirmationWidget message={message} isExpanded={false} onToggle={() => {}} sessionId="host-decision" />
+    </JotaiProvider>);
+    expect(screen.getByTestId('git-commit-widget').dataset.state).toBe(state);
+  });
+
   it('sends cancel through the interactive host', async () => {
     const { interactiveWidgetHostAtom } = await import('../../../../store/atoms/interactiveWidgetHost');
 
@@ -1603,6 +1626,40 @@ describe('ExitPlanModeWidget', () => {
     const widget = screen.getByTestId('exit-plan-mode-widget');
     expect(widget.dataset.state).toBe('denied');
     expect(screen.getByText('Continued Planning')).toBeDefined();
+  });
+
+  // Starting a new session stops this one with a non-approval, which used to
+  // read as "Denied". The recorded reason is the only record after a reload.
+  it('shows a plan handed to a new session as deferred, live and after a reload', async () => {
+    const host = { exitPlanModeStartNewSession: vi.fn().mockResolvedValue(undefined) };
+    setInteractiveWidgetHost('deferred-plan-live', host as unknown as InteractiveWidgetHost);
+    const live = render(
+      <JotaiProvider store={globalStore}>
+        <ExitPlanModeWidget
+          message={makeToolMessage('ExitPlanMode', { planFilePath: 'plan.md' })}
+          isExpanded={false}
+          onToggle={() => {}}
+          sessionId="deferred-plan-live"
+        />
+      </JotaiProvider>
+    );
+    await rtl.act(async () => { fireEvent.click(screen.getByTestId('exit-plan-mode-new-session')); });
+    expect(host.exitPlanModeStartNewSession).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('exit-plan-mode-widget').dataset.state).toBe('deferred');
+    live.unmount();
+
+    const reason = exitPlanModeDenialReason({ approved: false, deferredTo: { kind: 'session' } });
+    render(
+      <Wrapper>
+        <ExitPlanModeWidget
+          message={makeToolMessage('ExitPlanMode', { planFilePath: 'plan.md' }, reason)}
+          isExpanded={false}
+          onToggle={() => {}}
+          sessionId="deferred-plan-reloaded"
+        />
+      </Wrapper>
+    );
+    expect(screen.getByTestId('exit-plan-mode-widget').dataset.state).toBe('deferred');
   });
 
   it('shows plan file path as clickable link', () => {

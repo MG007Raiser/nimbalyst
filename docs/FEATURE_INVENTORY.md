@@ -45,6 +45,7 @@ Maintain this when notable capabilities are added, significantly expanded, or re
 - Mentions -- `@` offers team members (written as `[@Name](mailto:...)`) and dates (written as `@2026-10-15`, shown relative) alongside page links
 - Link previews -- a link alone on its line can show as a bookmark card (metadata fetched by the app) or, for allowlisted video and design-file hosts, the site's own player; it stays a normal link in plain markdown. Players are desktop only for now
 - Code excerpts -- an `excerpt` fence quotes a line range of a committed file (read at HEAD; dotfiles refused), pinned to a commit with the snapshot stored in the page, and flags when the code has changed, moved or gone, with "Update to current" and open-at-line
+- Colored text -- seven named text and background colors from the selection toolbar, saved as `<span style="color: ...">` so Obsidian shows the color; Nimbalyst shows palette colors in theme-adjusted shades and keeps any other color as written. Shown in the editor, the AI transcript, the local wiki browser view and its static export; the team web console after its next deploy. Not yet on iOS or Android
 - Tabs -- a tabs block with named panels of ordinary markdown (each panel is a collapsible section on GitHub)
 - Action buttons -- a "Start session" button runs a stored prompt (optional model and effort) as a new agent session with the page as context, after showing the full prompt for confirmation; a "New item" button creates a typed page from an optional template and places it under the current page. Desktop only
 
@@ -138,10 +139,11 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Click-to-copy code blocks
 - Agent file-placement preference -- open file tabs above the transcript or in the right pane
 - Optional MCP status chip showing the session's configured, connected, and missing servers (off by default in Agent Features settings)
+- Claude in Chrome for Claude Code sessions (off by default, toggle under Agent Features): starts the agent with the Claude in Chrome extension's browser tools so it can drive the user's own Chrome; tool calls go through the normal permission prompt; not enabled for headless explicit-only runs
 - File `@` mention in input
 - Image attachment support
 - A named file or page context indicator above the chat input, with a separate short preview of selected text, consistent across Files, Agent and Wiki modes (shared, Local and Personal pages). Selection chips show selected text, mockup annotations and extension-provided items from node-like editors such as Excalidraw; each selection chip has an × to drop it from the prompt while keeping the document context, and node-like editors can report multiple selections at once
-- Queued prompts display
+- Queued prompts display; messages queued while the agent works (typed by the user or sent by other sessions) are delivered together in one turn, each labeled with its author, with slash commands and differing document context kept as separate turns
 - Slash command typeahead
 - Action prompts dropdown in composer (reusable prompt presets defined in `nimbalyst-local/ai-actions.md`; pick to insert verbatim into the draft, with undo support)
 
@@ -201,7 +203,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Open a PR in a git worktree with an agent session on its head branch
 - Tracker integration (reference-based, works with any tracker type): status badge + priority marker on list rows, editable status pill and tracker chips in the detail header, dynamic review-status filter chips
 - Jump PR ↔ tracker item ↔ review session in one click from any of the three surfaces
-- Link any tracker item to a PR from the PR detail; opening a worktree auto-links the session to referencing items
+- Link any tracker item to a PR from the PR detail; starting a review or opening a worktree keeps a local `github-pr` overlay item for the PR and links the session to it and to every referencing item, so the PR's chat pane finds the session again. Review sessions started before overlays existed are found by their opening prompt and linked the first time the PR is opened
 - Merging transitions referencing tracker items via the opt-in `prMergedStatus` schema role (comment-only for types without it); externally merged PRs surface a one-click catch-up hint
 - Tracker kanban cards show an item's external identity (e.g. PR number) via the `externalKey` schema role
 - GitHub issue browsing and triage beside pull requests, with local investigation status and notes and an explicit action to adopt an issue into a tracker
@@ -211,7 +213,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 - Multi-folder projects -- attach folders from the File menu or quick open; their files participate in the explorer, search, and agent context, with Git tracked per repository; Quick Open, @ mentions and content search also find files in repositories cloned inside a project, and worktree sessions get the project's attached folders
 - File tree with expand/collapse and keyboard navigation
-- Virtualized file tree for large repositories
+- Virtualized file tree for large repositories; a subfolder cut off at the 200-entry limit ends with a row saying how many items are hidden
 - Context menu: rename, delete, reveal in Finder, open externally, copy path, move, copy
 - Drag-and-drop file/folder operations (Option/Alt to copy)
 - File watching with auto-reload on external changes
@@ -248,7 +250,19 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Hands-free brainstorm loop — talk an idea through, kick off a plan (`/design`), have the agent read the written plan back to refine it by voice, then `/implement`; ask "is it done yet?" anytime for live task status
 - Voice agent tool calls (memory lookups, coding-agent questions, and more) are recorded in the voice session transcript and render as tool widgets, including a dedicated memory-recall widget showing the query and the returned source documents (title + snippet)
 - Available on desktop and iOS; native iOS defaults to Realtime and offers GPT Live as an opt-in preview
-- Dictation (alpha, desktop): a microphone button in the composer records a take and transcribes it offline through Handy (open-source speech-to-text), inserting the text at the cursor for review; Settings > Dictation picks the Handy install and one of its downloaded models. No API key, no network.
+
+## Dictation
+
+- Speech-to-text into the agent input, markdown editor, and Monaco code editor at the cursor; never speaks back and never submits
+- On a Mac the default starts macOS system dictation in the focused field (any editable field); starts listening in about 40 ms
+- Mic button in the agent input; Ctrl+Option+Space starts dictation (on key press for macOS dictation; hold to talk or tap to toggle for our engines), Esc discards pending text on our engines
+- Alternative engines in Settings: on-device macOS speech recognition (Swift helper, audio stays local), Handy (the open-source desktop app's offline transcriber on any platform where it is installed; Auto picks it on Windows and Linux before OpenAI), or OpenAI transcription on the user's key; an explicit engine choice never falls back
+- Handy engine: transcribes the whole take after stop (no partials), with the model picked in Settings > Dictation from the ones downloaded inside Handy and an optional executable path override; a "Transcribing..." state on the button and status row covers the wait
+- Status row above the agent input while dictating ("Listening..." / "Transcribing..." with an elapsed counter), mirroring the transcript's "Thinking..." row
+- Mic button beside the "Other" answer box of AskUserQuestion, PromptForUserInput and interactive prompt cards, so free-text answers can be dictated at the cursor
+- Our engines open the mic in parallel with engine start and buffer, so the first words are not lost; live partial text shown muted and replaced by the final text
+- Settings > Dictation toggle turns the feature off and hides every mic button, shortcut, and hint
+- Extension editors can accept dictation through `EditorHost.registerDictationTarget`
 
 ## Mobile (iOS)
 
@@ -384,7 +398,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - Quick Track (Cmd+Shift+I) creates an item of any type from anywhere, with similar-item suggestions before creating a duplicate
 - Ready view surfaces unblocked work, ordered by how much other work it unblocks; items record what they are waiting on
 - Open / All / Closed filter, hiding closed work by default; Owner and Due Date available across the All view
-- Personal and team trackers, with unpublished team items remaining private; local item numbers (`NIM.75`) are given only to items of types that set `localNumbers: true`
+- Personal and team trackers, with unpublished team items remaining private; local item numbers (`NIM.75`) are given to items of every type except types that set `localNumbers: false`
 - Table editing with multi-cell operations and undo/redo
 - Tracker-item context menus open linked AI sessions or launch a new session or worktree; draft plans with linked commits show a status-mismatch chip
 - Unread indicators — a dot on tracker rows/cards (list, kanban, tag board) when an item is new or was changed by someone else since you last viewed it; clears when you open it; your own edits and views sync across your devices (personal channel), and AI-agent edits count as unread
@@ -476,6 +490,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 
 ## CLI and Remote Execution
 
+- `nimbalyst` shell command (macOS, opt-in) -- **Nimbalyst > Install 'nimbalyst' Command in PATH** or **Settings > Advanced > Shell Command** links `/usr/local/bin/nimbalyst` to a script inside the app bundle (asking for an administrator password when the directory is not writable), so it updates with the app. `nimbalyst .` or `nimbalyst <folder>` opens a folder as a project, focusing its window if one is already open; `nimbalyst <file>` opens a file in the project that contains it. It never replaces a `nimbalyst` command it did not install without asking, and Uninstall removes only its own link. Folders passed to the app by `open -a Nimbalyst <folder>` open the same way
 - `nim` CLI for workspace, session, document, and tracker queries, with filters and JSON/CSV output; tracker mutations, readiness queries, release helpers, and live importer commands
 - CLI live mode uses the running app's tools; offline mode supports native tracker reads and writes with schema checks and refuses writes while the live app owns the database. Session/document commands are read-only
 - Nimbalyst Wiki for Claude Code and Codex without the desktop app -- the `nimbalyst-wiki` plugin (skills `start` (a first-run tour), `setup`, `update`, `connect`, `capture`; MIT licensed; installs in Claude Code and the Codex CLI, where it has no end-of-session reminder and no session citations) reads and writes a team project's wiki pages through a remote MCP server with the same wiki tools as the desktop agent (list the tree, search page text, read and edit page bodies, create, move, rename, delete, set a page's type and fields, typed pages and types), cites the terminal user's own typed prompts and answers through a local transcript helper, and cites comments on shared pages; `nim wiki` offers the same tools from a shell (one noun for the team and local wikis; `--team`/`--local` force either). Sign-in is a Nimbalyst account approved in the web console (`nim login` uses a device code); access follows Nimbalyst Teams membership, a team admin binds a repo to a team project, and an agent only reaches projects its user already has. Edits land directly with a history revision; team pages only. Requires the updated sync server
@@ -542,6 +557,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - Multi-window support with per-project state persistence
 - Multi-project rail with an optional "Allow unlimited projects" setting. The default is eight projects per window; enabling unlimited projects can use more memory and CPU. Turning it off keeps current and restored projects open.
 - Reorder project rail icons by dragging, Move up/down, or Sort by name; order persists without changing the active project.
+- Drag a project from one window's rail to another window's rail to move it there, or drop it outside every window to open it in a new window at that spot. A window whose last project is dragged away closes.
 - Project Manager (Cmd+P)
 - System tray with session status and click-to-navigate
 - macOS menu bar fleet monitoring -- follow active sessions, see which need attention, and open them from the menu bar
@@ -551,7 +567,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - Auto-updater with toast notification
 - Deferred restart (waits for active AI sessions)
 - Linux `.deb` package for Debian and Ubuntu, which starts on Ubuntu 24.04 and later where the AppImage is blocked by AppArmor's user-namespace restriction
-- SQLite for new installs and migration from existing PGLite databases, retaining original data and recovery copies; alpha installs under 256 MiB are migrated automatically at startup when a staged rollout reaches them; backup and recovery controls in Database settings
+- SQLite for new installs and migration from existing PGLite databases, retaining original data and recovery copies; databases up to 1 GiB are migrated automatically at startup and larger ones migrate only from Database settings; backup and recovery controls in Database settings
 
 ## Onboarding & Help
 
@@ -578,6 +594,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - PostHog integration (opt-in, anonymous)
 - AI usage report with historical graph and activity heatmap
 - Claude model-specific weekly usage percentages and reset times, including Fable
+- Weekly usage history in the Claude and Codex usage popovers: a chart of utilization across a selected week against an even-pace line, and each past week's final percentage (weekly and per-model limits, recorded locally while the app runs, kept indefinitely; weeks without a reading near their reset show as a lower bound)
 - Per-project usage breakdown
 - Per-tool usage tracking (local counters for built-in and MCP/extension tools) surfaced as a Tools section in the AI usage report (top tools, built-in vs MCP split, over-time, per-provider) and as a targeting signal for contextual tips; backfill from past claude-code and codex sessions
 - Developer Dashboard Renders tab for inspecting component re-render counts and causes

@@ -24,6 +24,8 @@ interface FileTreeItem {
   type: 'file' | 'directory';
   children?: FileTreeItem[];
   childrenTruncated?: boolean;
+  omittedChildCount?: number;
+  omittedChildCountIsMinimum?: boolean;
 }
 
 interface ClaudeForWindowsInstallation {
@@ -53,6 +55,15 @@ interface ArchiveTask {
   status: 'queued' | 'pending' | 'removing-worktree' | 'completed' | 'failed';
   startTime: Date;
   error?: string;
+}
+
+interface ProjectMoveJob {
+  oldPath: string;
+  newPath: string;
+  status: 'running' | 'succeeded' | 'failed';
+  phase: 'backup' | 'moving' | 'moving-worktrees' | 'database' | 'repairing-worktrees' | null;
+  error?: string;
+  warnings?: string[];
 }
 
 interface GhCliStatus {
@@ -530,20 +541,6 @@ interface ElectronAPI {
   // single per-key broadcast. See shared/settings/keys.ts for the registry.
   settingsGetAll: () => Promise<Record<string, unknown>>;
   settingsSet: (key: string, value: unknown) => Promise<{ ok: true }>;
-  /** Offline dictation through Handy (composer microphone button). */
-  dictation: {
-    status: () => Promise<{ available: boolean; binaryPath?: string; configuredPath: string; model: string; reason?: string }>;
-    listModels: () => Promise<
-      | { success: true; models: Array<{ id: string; name: string; engineType: string; isDownloaded: boolean; sizeMb?: number; supportedLanguages?: string[]; isRecommended?: boolean }> }
-      | { success: false; error: string }
-    >;
-    transcribe: (request: { pcm16: Uint8Array; sampleRate: number }) => Promise<
-      | { success: true; text: string; timings: { audioSeconds?: number; loadMs?: number; transcribeMs?: number }; model?: string }
-      | { success: false; error: string; cancelled?: boolean }
-    >;
-    cancel: () => Promise<{ cancelled: boolean }>;
-    detect: () => Promise<{ path: string; hostname: string }>;
-  };
   settingsDelete: (key: string) => Promise<{ ok: true }>;
   onSettingsChanged: (callback: (payload: { key: string; value: unknown }) => void) => () => void;
   onAppSettingsChanged: (callback: (payload: { key: string; value: unknown }) => void) => () => void;
@@ -664,7 +661,7 @@ interface ElectronAPI {
   onMcpRenameSharedItem: (callback: (data: { itemId: string, kind: 'doc' | 'folder', newName: string, resultChannel: string }) => void) => () => void;
   onMcpDeleteSharedItem: (callback: (data: { itemId: string, kind: 'doc' | 'folder', resultChannel: string }) => void) => () => void;
   sendMcpCollabIndexResult: (resultChannel: string, result: { success: boolean; error?: string; [key: string]: unknown }) => void;
-  onMcpGetResourceSharingStatus: (callback: (data: { sourceId: string; resultChannel: string }) => void) => () => void;
+  onMcpGetResourceSharingStatus: (callback: (data: { sourceId: string; workspacePath?: string; resultChannel: string }) => void) => () => void;
   sendMcpCollabReadResult: (resultChannel: string, result: { success: boolean; result?: unknown; error?: string }) => void;
   updateMcpDocumentState: (state: any) => void;
   clearMcpDocumentState: () => Promise<void>;
@@ -736,8 +733,11 @@ interface ElectronAPI {
   // Project Migration (move/rename)
   projectMigration: {
     canMove: (oldPath: string) => Promise<{ canMove: boolean; reason?: string }>;
-    move: (oldPath: string, newPath: string) => Promise<{ success: boolean; error?: string; newPath?: string }>;
-    rename: (oldPath: string, newName: string) => Promise<{ success: boolean; error?: string; newPath?: string }>;
+    /** Starts a background move; progress arrives through onMoveProgress */
+    move: (oldPath: string, newPath: string) => Promise<{ started: boolean; error?: string }>;
+    getMoveJobs: () => Promise<ProjectMoveJob[]>;
+    onMoveProgress: (callback: (job: ProjectMoveJob) => void) => () => void;
+    rename: (oldPath: string, newName: string) => Promise<{ success: boolean; error?: string; newPath?: string; warnings?: string[] }>;
   };
 
   // Tracker lifecycle: personal -> team promotion (one-way) and archive.

@@ -235,6 +235,11 @@ export const SETTINGS_REGISTRY = {
     { store: 'ai-settings', path: 'promptSuggestionsEnabled' },
     true,
   ),
+  'ai.claudeInChromeEnabled': setting(
+    z.boolean(),
+    { store: 'ai-settings', path: 'claudeInChromeEnabled' },
+    false,
+  ),
   'ai.trackerAutomation': setting(
     z.object({
       enabled: z.boolean(),
@@ -289,21 +294,6 @@ export const SETTINGS_REGISTRY = {
     z.enum(['comfortable', 'compact']),
     { store: 'app-settings', path: 'teamMessages.density' },
     'comfortable',
-  ),
-  /**
-   * Offline dictation through Handy (composer microphone button). An empty
-   * path means auto-detect the per-user install; an empty model means the
-   * model selected inside Handy.
-   */
-  'dictation.handyPath': setting(
-    z.string(),
-    { store: 'app-settings', path: 'dictation.handyPath' },
-    '',
-  ),
-  'dictation.model': setting(
-    z.string(),
-    { store: 'app-settings', path: 'dictation.model' },
-    '',
   ),
 } as const;
 
