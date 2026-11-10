@@ -20,6 +20,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 <!-- Removed features go here -->
 
+## [0.83.1] - 2026-11-10
+
+### Added
+<!-- New features go here -->
+- Dictation on Windows and Linux without an OpenAI key: install the open-source Handy app and its offline transcriber becomes a speech engine in Settings > Dictation (Auto picks it before OpenAI). Pick one of the models downloaded inside Handy, or point the setting at an unusual install location. Words arrive once you stop talking; audio never leaves the machine
+- While dictating, a status row above the agent input shows "Listening..." and then "Transcribing..." with an elapsed counter, and the microphone button shows the same states, so you can see the microphone is still on
+- Dictate answers to the assistant's questions: the microphone button also sits beside the "Other" answer box of question cards (AskUserQuestion, PromptForUserInput and interactive prompts)
+
+### Changed
+<!-- Changes to existing functionality go here -->
+- The OpenAI Codex model picker lists the models your Codex installation reports, so new releases appear and retired ones drop out without waiting for an app update; a selected model that Codex has since retired stays listed as unavailable instead of being swapped silently
+- This fork build updates itself from the MG007Raiser/nimbalyst releases instead of the upstream project's
+
+### Fixed
+<!-- Bug fixes go here -->
+- The session transcript stays at the true end of a reply: finishing a turn, a growing last message, or resizing the raw terminal panel no longer leaves the last lines below the fold, and scrolling to the bottom by hand no longer snaps back up a few lines
+- Windows: packaging links hoisted extra resources with a junction, so the build no longer needs symlink privileges
+
+### Removed
+<!-- Removed features go here -->
+
 ## [0.83.0] - 2026-11-09
 
 
