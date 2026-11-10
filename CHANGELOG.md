@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Claude Fable 5.2 is now available in the model picker, with Fable 5.1 and Fable 5 kept as selectable previous-generation options (from upstream v0.83.0)
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- The bundled Codex CLI moves from 0.162.1 to 0.167.0, so the live Codex model picker now offers GPT-6.1 Sol (default), GPT-6.1 Terra, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna and the GPT-5.6 Sol/Terra/Luna generation, as OpenAI currently serves them through Codex
 
 ### Fixed
 <!-- Bug fixes go here -->
