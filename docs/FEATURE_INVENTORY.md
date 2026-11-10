@@ -256,7 +256,10 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Speech-to-text into the agent input, markdown editor, and Monaco code editor at the cursor; never speaks back and never submits
 - On a Mac the default starts macOS system dictation in the focused field (any editable field); starts listening in about 40 ms
 - Mic button in the agent input; Ctrl+Option+Space starts dictation (on key press for macOS dictation; hold to talk or tap to toggle for our engines), Esc discards pending text on our engines
-- Alternative engines in Settings: on-device macOS speech recognition (Swift helper, audio stays local) or OpenAI transcription on the user's key; an explicit engine choice never falls back
+- Alternative engines in Settings: on-device macOS speech recognition (Swift helper, audio stays local), Handy (the open-source desktop app's offline transcriber on any platform where it is installed; Auto picks it on Windows and Linux before OpenAI), or OpenAI transcription on the user's key; an explicit engine choice never falls back
+- Handy engine: transcribes the whole take after stop (no partials), with the model picked in Settings > Dictation from the ones downloaded inside Handy and an optional executable path override; a "Transcribing..." state on the button and status row covers the wait
+- Status row above the agent input while dictating ("Listening..." / "Transcribing..." with an elapsed counter), mirroring the transcript's "Thinking..." row
+- Mic button beside the "Other" answer box of AskUserQuestion, PromptForUserInput and interactive prompt cards, so free-text answers can be dictated at the cursor
 - Our engines open the mic in parallel with engine start and buffer, so the first words are not lost; live partial text shown muted and replaced by the final text
 - Settings > Dictation toggle turns the feature off and hides every mic button, shortcut, and hint
 - Extension editors can accept dictation through `EditorHost.registerDictationTarget`

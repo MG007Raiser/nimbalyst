@@ -23,6 +23,7 @@ import type { ExitPlanModeDeferral } from '@nimbalyst/runtime/ai/exitPlanModeDef
 import { agentCapabilitiesForProviderType } from '@nimbalyst/runtime/ai/server/agentCapabilities';
 import type { ToolCallDiffLoadResult } from '@nimbalyst/runtime/ai/server/transcript';
 import { AgentTranscriptPanel } from '@nimbalyst/runtime/ui/AgentTranscript/components/AgentTranscriptPanel';
+import { TranscriptDictationProvider } from './TranscriptDictationProvider';
 import type { TranscriptFileLocation } from '@nimbalyst/runtime/ui/AgentTranscript/components/MarkdownRenderer';
 import { ClaudeCliTerminalStrip } from './ClaudeCliTerminalStrip';
 import { ClaudeCliNotInstalledNotice } from './ClaudeCliNotInstalledNotice';
@@ -2581,6 +2582,7 @@ const LocalSessionTranscript = forwardRef<SessionTranscriptRef, SessionTranscrip
                 : 0,
           }}
         >
+          <TranscriptDictationProvider>
           <AgentTranscriptPanel
             ref={transcriptPanelRef}
             sessionId={sessionId}
@@ -2631,6 +2633,7 @@ const LocalSessionTranscript = forwardRef<SessionTranscriptRef, SessionTranscrip
             phaseColumns={SESSION_PHASE_COLUMNS}
             onSetPhase={handleSetPhase}
           />
+          </TranscriptDictationProvider>
         </div>
       )}
 

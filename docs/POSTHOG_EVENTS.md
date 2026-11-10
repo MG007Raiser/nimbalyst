@@ -488,7 +488,7 @@ Speech-to-text into the agent input and document editors. No event carries dicta
 | --- | --- | --- | --- | --- | --- |
 | `dictation_enabled` | `store/atoms/dictation.ts` | User turns Dictation on in Settings | None | (pending release) |  |
 | `dictation_disabled` | `store/atoms/dictation.ts` | User turns Dictation off in Settings | None | (pending release) |  |
-| `dictation_started` | `dictation/dictationController.ts` | A dictation started recording (engine accepted it and the microphone opened) | `engine` (on-device/openai)<br/>`surface` (agent-input/markdown/code)<br/>`trigger` (button/shortcut) | (pending release) |  |
+| `dictation_started` | `dictation/dictationController.ts` | A dictation started recording (engine accepted it and the microphone opened) | `engine` (on-device/openai/handy)<br/>`surface` (agent-input/markdown/code/question)<br/>`trigger` (button/shortcut) | (pending release) |  |
 | `dictation_inserted` | `dictation/dictationController.ts` | A dictation ended after inserting at least one committed segment; not sent for cancelled or empty dictations | `engine`<br/>`surface`<br/>`durationMs` (recording time, start to stop)<br/>`segments` (committed segments inserted) | (pending release) |  |
 
 ### Mobile App

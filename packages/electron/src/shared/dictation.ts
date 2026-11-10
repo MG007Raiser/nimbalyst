@@ -7,14 +7,17 @@
  */
 
 /**
- * 'auto' = macOS system dictation on a Mac, otherwise OpenAI if a key is set.
+ * 'auto' = macOS system dictation on a Mac, otherwise Handy when it is
+ * installed, otherwise OpenAI if a key is set.
  * 'system' = hand off to the OS dictation (macOS only); it inserts text itself
  * and never goes through DictationService's engines.
+ * 'handy' = the Handy desktop app's offline transcriber (any platform where
+ * Handy is installed); audio never leaves the machine.
  */
-export type DictationEngineSetting = 'auto' | 'system' | 'on-device' | 'openai';
+export type DictationEngineSetting = 'auto' | 'system' | 'on-device' | 'openai' | 'handy';
 
 /** The engine actually running a dictation. */
-export type DictationEngineId = 'on-device' | 'openai';
+export type DictationEngineId = 'on-device' | 'openai' | 'handy';
 
 export interface DictationSettings {
   /** When false, every dictation affordance is hidden and the shortcut is inert. */
@@ -22,6 +25,30 @@ export interface DictationSettings {
   engine: DictationEngineSetting;
   /** BCP-47 locale such as 'en-US'. Undefined = system locale. */
   language?: string;
+  /** Handy binary override. Undefined = auto-detect the per-user install. */
+  handyPath?: string;
+  /** Handy model id to transcribe with. Undefined = the model selected inside Handy. */
+  handyModel?: string;
+}
+
+/** One entry of Handy's model catalog, as Settings > Dictation lists it. */
+export interface DictationHandyModel {
+  id: string;
+  name: string;
+  isDownloaded: boolean;
+  isRecommended?: boolean;
+}
+
+/** What `dictation:handy-status` reports for the settings panel. */
+export interface DictationHandyStatus {
+  available: boolean;
+  /** The binary that would run, after applying the override. */
+  binaryPath?: string;
+  /** The auto-detected install, ignoring the override. */
+  detectedPath?: string;
+  models: DictationHandyModel[];
+  /** Why the model list is empty when Handy is installed. */
+  error?: string;
 }
 
 export const DEFAULT_DICTATION_SETTINGS: DictationSettings = {
@@ -75,12 +102,16 @@ export interface DictationAvailability {
   system: boolean;
   onDevice: boolean;
   openai: boolean;
+  /** The Handy desktop app is installed and its CLI was found. */
+  handy: boolean;
 }
 
 export const DICTATION_IPC = {
   getSettings: 'dictation:get-settings',
   setSettings: 'dictation:set-settings',
   getAvailability: 'dictation:get-availability',
+  /** Handy install and model catalog for Settings > Dictation: DictationHandyStatus */
+  handyStatus: 'dictation:handy-status',
   start: 'dictation:start',
   /** Fire-and-forget (safeOn): (dictationId: string, base64Pcm16: string) */
   audio: 'dictation:audio',

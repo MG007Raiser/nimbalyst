@@ -25,6 +25,7 @@ import {
   interactivePromptDraftAtom,
 } from '../../../store/atoms/interactivePromptDraft';
 import { unwrapShellCommand } from '../utils/unwrapShellCommand';
+import { useTranscriptDictation } from './transcriptDictationContext';
 
 // Inject interactive prompt styles once (for animations and color-mix patterns)
 const injectInteractivePromptStyles = () => {
@@ -254,6 +255,7 @@ const AskUserQuestionWidgetInteractive: React.FC<AskUserQuestionWidgetProps> = (
   const [draft, setDraft] = useAtom(interactivePromptDraftAtom(draftKey));
   const { answers, otherSelected, otherText } = draft;
   const otherInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const dictation = useTranscriptDictation();
 
   const handleOptionSelect = useCallback((questionText: string, optionLabel: string, multiSelect: boolean) => {
     setDraft(prev => {
@@ -413,31 +415,38 @@ const AskUserQuestionWidgetInteractive: React.FC<AskUserQuestionWidgetProps> = (
                   <span className="interactive-prompt__option-label">Other</span>
                 </button>
                 {otherSelected[question.question] && (
-                  <textarea
-                    ref={(el) => { otherInputRefs.current[question.question] = el; }}
-                    value={otherText[question.question] || ''}
-                    onChange={(e) => handleOtherTextChange(question.question, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && allAnswered) {
-                        e.preventDefault();
-                        handleSubmit();
-                      }
-                    }}
-                    placeholder="Type your answer..."
-                    disabled={isSubmitting}
-                    rows={2}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      marginTop: '6px',
-                      borderRadius: '4px',
-                      border: '1px solid var(--nim-border)',
-                      background: 'var(--nim-bg-secondary)',
-                      color: 'var(--nim-text)',
-                      fontSize: '13px',
-                      resize: 'vertical',
-                    }}
-                  />
+                  <div className="interactive-prompt__other-row" style={{ display: 'flex', alignItems: 'flex-end', gap: '6px' }}>
+                    <textarea
+                      ref={(el) => { otherInputRefs.current[question.question] = el; }}
+                      value={otherText[question.question] || ''}
+                      onChange={(e) => handleOtherTextChange(question.question, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey && allAnswered) {
+                          e.preventDefault();
+                          handleSubmit();
+                        }
+                      }}
+                      placeholder="Type your answer..."
+                      disabled={isSubmitting}
+                      rows={2}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        marginTop: '6px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--nim-border)',
+                        background: 'var(--nim-bg-secondary)',
+                        color: 'var(--nim-text)',
+                        fontSize: '13px',
+                        resize: 'vertical',
+                      }}
+                    />
+                    {dictation?.renderButton({
+                      getTextarea: () => otherInputRefs.current[question.question] ?? null,
+                      setValue: (value) => handleOtherTextChange(question.question, value),
+                      disabled: isSubmitting,
+                    })}
+                  </div>
                 )}
               </div>
             </div>

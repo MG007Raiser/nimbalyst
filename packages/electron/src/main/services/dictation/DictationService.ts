@@ -11,6 +11,7 @@ import path from 'path';
 import {
   DICTATION_IPC,
   DICTATION_SAMPLE_RATE,
+  type DictationHandyStatus,
   type DictationSettings,
   type DictationStartRequest,
   type DictationStopRequest,
@@ -23,6 +24,8 @@ import { ensureVoiceMicrophoneAccess } from '../voice/microphoneAccess';
 import { getActiveVoiceSessionId } from '../voice/VoiceModeService';
 import { DictationController, type DictationDebugRecording, type DictationTarget } from './DictationController';
 import { normalizeDictationSettings } from './dictationSettings';
+import { HandyDictationEngine } from './HandyDictationEngine';
+import { listHandyModels, resolveHandyBinary } from './handyCli';
 import { OnDeviceDictationEngine } from './OnDeviceDictationEngine';
 import { OpenAIDictationEngine } from './OpenAIDictationEngine';
 
@@ -101,6 +104,12 @@ export function initDictationService(): void {
         getApiKey: () => getProviderCredentials().get('openai') || undefined,
         log,
       }),
+      handy: new HandyDictationEngine({
+        getConfiguredPath: () => getSettings().handyPath,
+        getModel: () => getSettings().handyModel,
+        tempDir: app.getPath('temp'),
+        log,
+      }),
     },
     isVoiceModeActive: () => getActiveVoiceSessionId() !== null,
     platform: process.platform,
@@ -141,6 +150,33 @@ export function initDictationService(): void {
   });
 
   safeHandle(DICTATION_IPC.getAvailability, () => dictation.getAvailability());
+
+  // Settings > Dictation: where Handy was found and which models it has
+  // downloaded. Listing runs Handy's CLI once; it is not called per dictation.
+  safeHandle(DICTATION_IPC.handyStatus, async (): Promise<DictationHandyStatus> => {
+    const settings = getSettings();
+    const detectedPath = resolveHandyBinary(undefined);
+    const binaryPath = resolveHandyBinary(settings.handyPath);
+    if (!binaryPath) return { available: false, detectedPath, models: [] };
+    try {
+      const models = await listHandyModels(binaryPath);
+      return {
+        available: true,
+        binaryPath,
+        detectedPath,
+        models: models.map((model) => ({
+          id: model.id,
+          name: model.name,
+          isDownloaded: model.isDownloaded,
+          ...(model.isRecommended ? { isRecommended: true } : {}),
+        })),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.main.warn(`[Dictation] Handy model list failed: ${message}`);
+      return { available: true, binaryPath, detectedPath, models: [], error: message };
+    }
+  });
 
   // macOS system dictation: send Edit > Start Dictation's AppKit action to the
   // focused text view. It starts listening in about 40ms and inserts text

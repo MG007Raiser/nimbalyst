@@ -18,6 +18,7 @@ import {
   DICTATION_IPC,
   type DictationAvailability,
   type DictationEngineId,
+  type DictationHandyStatus,
   type DictationSettings,
 } from '../../../shared/dictation';
 
@@ -67,10 +68,30 @@ export const dictationAvailabilityAtom = atom<DictationAvailability | null>(null
 export const refreshDictationAvailabilityAtom = atom(null, async (_get, set) => {
   try {
     const availability = await window.electronAPI.invoke(DICTATION_IPC.getAvailability);
-    set(dictationAvailabilityAtom, availability ?? { onDevice: false, openai: false });
+    set(dictationAvailabilityAtom, availability ?? { system: false, onDevice: false, openai: false, handy: false });
   } catch (error) {
     console.error('[dictation] Failed to read availability:', error);
-    set(dictationAvailabilityAtom, { system: false, onDevice: false, openai: false });
+    set(dictationAvailabilityAtom, { system: false, onDevice: false, openai: false, handy: false });
+  }
+});
+
+/**
+ * Handy install and downloaded-model list for Settings > Dictation. Null until
+ * fetched; refreshed on demand because listing runs Handy's CLI.
+ */
+export const dictationHandyStatusAtom = atom<DictationHandyStatus | null>(null);
+
+export const refreshDictationHandyStatusAtom = atom(null, async (_get, set) => {
+  try {
+    const status: DictationHandyStatus | undefined = await window.electronAPI.invoke(DICTATION_IPC.handyStatus);
+    set(dictationHandyStatusAtom, status ?? { available: false, models: [] });
+  } catch (error) {
+    console.error('[dictation] Failed to read the Handy status:', error);
+    set(dictationHandyStatusAtom, {
+      available: false,
+      models: [],
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 
@@ -103,7 +124,7 @@ export const dictationSessionAtomFamily = atomFamily((_dictationId: string) =>
 );
 
 /** Surfaces dictation can insert into. Also the PostHog `surface` property. */
-export type DictationSurface = 'agent-input' | 'markdown' | 'code';
+export type DictationSurface = 'agent-input' | 'markdown' | 'code' | 'question';
 
 /** The dictation currently recording, if any. One at a time per window. */
 export interface ActiveDictation {
@@ -115,6 +136,20 @@ export interface ActiveDictation {
 }
 
 export const activeDictationAtom = atom<ActiveDictation | null>(null);
+
+/**
+ * A dictation that stopped recording and is waiting for the engine's last
+ * finals. Batch engines (Handy) do all their work here, so surfaces show
+ * "Transcribing..." for it. Null once the engine ends or the wait gives up.
+ */
+export interface FinishingDictation {
+  dictationId: string;
+  targetKey: string;
+  /** The engine id main reported at start; the controller keeps it as a plain string. */
+  engine: string | null;
+}
+
+export const dictationFinishingAtom = atom<FinishingDictation | null>(null);
 
 /**
  * Host-painted partial for targets that cannot draw it themselves (Lexical).

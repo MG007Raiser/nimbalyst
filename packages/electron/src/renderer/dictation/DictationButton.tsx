@@ -9,17 +9,20 @@ import { useDictation } from './useDictation';
  * disabled in Settings.
  */
 export function DictationButton({ targetKey, disabled }: { targetKey: string; disabled?: boolean }) {
-  const { enabled, recording, status, hearing, toggle } = useDictation(targetKey);
+  const { enabled, recording, status, hearing, finishing, toggle } = useDictation(targetKey);
   if (!enabled) return null;
 
   // Pulse until the mic delivers real audio: Bluetooth headsets send silence
   // for about 2s while switching into mic mode, so talking early is lost.
-  const preparing = status === 'starting' || status === 'preparing' || (recording && !hearing);
+  // Pulse again after stop while a batch engine (Handy) is still transcribing.
+  const preparing = status === 'starting' || status === 'preparing' || (recording && !hearing) || finishing;
   const title = recording
     ? hearing
       ? 'Stop dictation (Esc discards the unfinished phrase)'
       : 'Waiting for the microphone...'
-    : `Dictate (click, or hold ${getShortcutDisplay(DICTATION_SHORTCUT)})`;
+    : finishing
+      ? 'Transcribing what you said...'
+      : `Dictate (click, or hold ${getShortcutDisplay(DICTATION_SHORTCUT)})`;
 
   return (
     <button
@@ -37,8 +40,9 @@ export function DictationButton({ targetKey, disabled }: { targetKey: string; di
       aria-label={recording ? 'Stop dictation' : 'Start dictation'}
       aria-pressed={recording}
       data-testid="dictation-button"
+      data-dictation-phase={recording ? 'recording' : finishing ? 'transcribing' : 'idle'}
     >
-      <MaterialSymbol icon={recording ? 'stop' : 'mic'} size={18} />
+      <MaterialSymbol icon={recording ? 'stop' : finishing ? 'hourglass_top' : 'mic'} size={18} />
     </button>
   );
 }

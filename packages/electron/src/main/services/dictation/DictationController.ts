@@ -109,6 +109,7 @@ export class DictationController {
       system: this.deps.platform === 'darwin',
       onDevice: this.deps.engines['on-device'].isAvailable(),
       openai: this.deps.engines.openai.isAvailable(),
+      handy: this.deps.engines.handy.isAvailable(),
     };
   }
 
@@ -238,6 +239,7 @@ export class DictationController {
     this.cancelActive();
     this.deps.engines['on-device'].dispose();
     this.deps.engines.openai.dispose();
+    this.deps.engines.handy.dispose();
   }
 
   private finish(active: ActiveDictation): void {

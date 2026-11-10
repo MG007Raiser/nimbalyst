@@ -40,6 +40,7 @@ import { HighlightOverlay, type OverlayToken } from './commandPills/HighlightOve
 import { CommandPillPopover } from './commandPills/CommandPillPopover';
 import { canPersistWorkspaceHydratedState } from '../../utils/workspaceHydration';
 import { DictationButton } from '../../dictation/DictationButton';
+import { DictationStatus } from '../../dictation/DictationStatus';
 import { registerDictationTarget } from '../../dictation/dictationTargets';
 import { getDictationController } from '../../dictation/dictationController';
 import {
@@ -1504,6 +1505,9 @@ export const AIInput = forwardRef<AIInputRef, AIInputProps>(
 
         {/* Pending voice command with countdown */}
         {sessionId && <PendingVoiceCommand sessionId={sessionId} onSubmit={handlePendingVoiceCommandSubmit} />}
+
+        {/* Dictation: "Listening..." while the mic is on, "Transcribing..." while a batch engine works on the take */}
+        {!isMemoryMode && <DictationStatus targetKey={dictationKey} />}
 
         {/* Memory mode indicator */}
         {isMemoryMode && (

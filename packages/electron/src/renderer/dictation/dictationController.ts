@@ -20,6 +20,7 @@ import {
 } from '../../shared/dictation';
 import {
   activeDictationAtom,
+  dictationFinishingAtom,
   dictationOverlayAtom,
   dictationSessionAtomFamily,
   dictationSettingsAtom,
@@ -102,11 +103,16 @@ interface DictationRecord {
 
 /** After stop, wait this long for trailing finals before giving up on `ended`. */
 const ENDED_GRACE_MS = 10_000;
+/**
+ * Handy transcribes the whole take after stop (model load plus the audio), so
+ * its only final can take well over the streaming engines' grace.
+ */
+const BATCH_ENDED_GRACE_MS = 120_000;
 
 const FAILURE_MESSAGES: Record<DictationStartFailure, string> = {
   disabled: 'Dictation is turned off in Settings.',
   'no-engine':
-    'No speech engine is available. On macOS, on-device recognition needs macOS 13 or later; elsewhere add an OpenAI API key in Settings > Dictation.',
+    'No speech engine is available. On macOS, on-device recognition needs macOS 13 or later; elsewhere install Handy for offline dictation or add an OpenAI API key in Settings > Dictation.',
   'mic-denied':
     'Nimbalyst does not have microphone access. Allow it in System Settings > Privacy & Security > Microphone.',
   'speech-permission-denied':
@@ -293,7 +299,10 @@ export class DictationController {
       this.finish(id);
       return;
     }
-    if (!record.cleanupTimer) record.cleanupTimer = setTimeout(() => this.finish(id), ENDED_GRACE_MS);
+    // Surfaces show "Transcribing..." until the engine's last final lands.
+    this.deps.store.set(dictationFinishingAtom, { dictationId: id, targetKey: record.target.key, engine: record.engine });
+    const grace = record.engine === 'handy' ? BATCH_ENDED_GRACE_MS : ENDED_GRACE_MS;
+    if (!record.cleanupTimer) record.cleanupTimer = setTimeout(() => this.finish(id), grace);
   }
 
   /**
@@ -480,6 +489,9 @@ export class DictationController {
     if (this.activeId === dictationId) {
       this.activeId = null;
       this.deps.store.set(activeDictationAtom, null);
+    }
+    if (this.deps.store.get(dictationFinishingAtom)?.dictationId === dictationId) {
+      this.deps.store.set(dictationFinishingAtom, null);
     }
     // Whatever ended this record, its audio stops here (the review's
     // overlapping-start bug left the mic running when only the active

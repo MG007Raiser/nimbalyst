@@ -45,8 +45,10 @@ export interface DictationEngine {
 }
 
 /**
- * 'auto' prefers on-device, then OpenAI. An explicit choice never falls back:
- * a user who picked on-device for privacy must not have audio sent to OpenAI.
+ * 'auto' prefers on-device, then Handy, then OpenAI: the two offline engines
+ * before the one that sends audio out. An explicit choice never falls back:
+ * a user who picked on-device or Handy for privacy must not have audio sent
+ * to OpenAI.
  */
 export function selectDictationEngine(
   setting: DictationEngineSetting,
@@ -55,6 +57,8 @@ export function selectDictationEngine(
   switch (setting) {
     case 'on-device':
       return availability.onDevice ? 'on-device' : null;
+    case 'handy':
+      return availability.handy ? 'handy' : null;
     case 'openai':
       return availability.openai ? 'openai' : null;
     case 'system':
@@ -62,6 +66,7 @@ export function selectDictationEngine(
       return null;
     default:
       if (availability.onDevice) return 'on-device';
+      if (availability.handy) return 'handy';
       if (availability.openai) return 'openai';
       return null;
   }

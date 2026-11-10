@@ -7,16 +7,24 @@ Dictation is speech-to-text that inserts what the user says at the cursor in the
 - The Claude Agent SDK has no transcription API. Claude Code's own dictation uses a private endpoint authenticated with the user's claude.ai login, so it is not used.
 - `webkitSpeechRecognition` does not work in Electron (Chromium's implementation needs a Google service key). The old Lexical playground `SpeechToTextPlugin` built on it was removed.
 - Embedding Whisper was rejected for v1: native builds per OS and architecture, large model downloads, and CPU load, with no quality gain over Apple's on-device recognizer on Mac.
-- Windows and Linux users without an OpenAI key use OS dictation (Win+H) in v1.
+- Windows and Linux users without an OpenAI key use OS dictation (Win+H), or install Handy (below) for offline dictation inside Nimbalyst.
 
 ## Engines
 
 | Setting | Behavior |
 | --- | --- |
-| Auto (default) | macOS dictation on a Mac. Elsewhere OpenAI when a key is set, otherwise start fails with `no-engine` |
+| Auto (default) | macOS dictation on a Mac. Elsewhere Handy when it is installed, then OpenAI when a key is set, otherwise start fails with `no-engine` |
 | macOS dictation | Sends AppKit's `startDictation:` (the Edit > Start Dictation action) to the focused text view with `Menu.sendActionToFirstResponder`. macOS owns the mic, recognition, insertion and its UI; we get no events back |
 | On-device | macOS helper only. Never falls back, so audio never leaves the machine |
+| Handy | The [Handy](https://handy.computer) desktop app's headless CLI (`handy --transcribe-file <wav> --json`), any platform where it is installed. A batch engine: audio is buffered for the whole take, resampled from 24 kHz to the 16 kHz mono WAV Handy requires, transcribed once on stop and delivered as a single final; no partials. The model comes from Settings > Dictation (one already downloaded inside Handy) or Handy's own selection. Never falls back, so audio never leaves the machine |
 | OpenAI | `gpt-4o-transcribe` in a transcription-only Realtime session with server VAD, on the key from Nimbalyst settings. Never falls back |
+
+### Handy
+
+- `HandyDictationEngine.ts` resolves the binary through `handyCli.ts` (Settings override, then the per-user install folders, then `PATH`); `isAvailable` is that lookup, so uninstalling Handy drops it from Auto on the next start.
+- On stop the renderer sets `dictationFinishingAtom` and the button and status row show "Transcribing..." until the final lands; the renderer's grace for the trailing final is 120 s for Handy against 10 s for the streaming engines (model load plus the whole take).
+- Measured on Windows with Parakeet: about 0.8 s model load plus tens of milliseconds per second of audio, run through Vulkan when available.
+- `dictation:handy-status` lists the install and the downloaded models for the settings panel; it runs `handy --list-models --json` once per refresh, never per dictation.
 
 ### macOS dictation
 
