@@ -50,6 +50,44 @@ const CODEX_EFFORT_CEILINGS: Readonly<Record<string, EffortLevel>> = {
 };
 
 /**
+ * Ceilings learned at runtime from the live catalog (`model/list`), keyed by
+ * bare slug. They win over the static table, so a model the bundled codex
+ * adds gets its real ceiling without a code change (#675). Main fills this
+ * after each catalog read; the renderer fills its own copy from the fetched
+ * model list, because the two processes do not share module state.
+ */
+const registeredCodexEffortCeilings = new Map<string, EffortLevel>();
+
+export function registerCodexEffortCeilings(ceilings: Readonly<Record<string, EffortLevel>>): void {
+  for (const [modelId, ceiling] of Object.entries(ceilings)) {
+    if (modelId && ceiling in EFFORT_RANK) {
+      registeredCodexEffortCeilings.set(stripProviderPrefix(modelId), ceiling);
+    }
+  }
+}
+
+/** Registers every Codex entry of a fetched catalog that carries `effortCeiling`. */
+export function registerCodexEffortCeilingsFromModels(
+  models: ReadonlyArray<{ id: string; effortCeiling?: EffortLevel }>,
+): void {
+  const ceilings: Record<string, EffortLevel> = {};
+  for (const model of models) {
+    if (model.effortCeiling && model.id.toLowerCase().startsWith('openai-codex')) {
+      ceilings[model.id] = model.effortCeiling;
+    }
+  }
+  registerCodexEffortCeilings(ceilings);
+}
+
+export function clearRegisteredCodexEffortCeilings(): void {
+  registeredCodexEffortCeilings.clear();
+}
+
+function lookupCodexEffortCeiling(rawModelId: string): EffortLevel | undefined {
+  return registeredCodexEffortCeilings.get(rawModelId) ?? CODEX_EFFORT_CEILINGS[rawModelId];
+}
+
+/**
  * Unlisted Codex models clamp to xhigh — the behavior every Codex model had
  * before per-model ceilings existed, so an unrecognized id can never start
  * sending a level codex will reject.
@@ -68,7 +106,7 @@ export function resolveCodexEffortCeiling(modelId?: string): EffortLevel {
   if (!modelId) {
     return CODEX_DEFAULT_EFFORT_CEILING;
   }
-  return CODEX_EFFORT_CEILINGS[stripProviderPrefix(modelId)] ?? CODEX_DEFAULT_EFFORT_CEILING;
+  return lookupCodexEffortCeiling(stripProviderPrefix(modelId)) ?? CODEX_DEFAULT_EFFORT_CEILING;
 }
 
 /**
@@ -80,7 +118,7 @@ export function resolveEffortCeiling(modelId?: string): EffortLevel {
     return DEFAULT_EFFORT_CEILING;
   }
   const raw = stripProviderPrefix(modelId);
-  if (modelId.toLowerCase().startsWith('openai-codex') || raw in CODEX_EFFORT_CEILINGS) {
+  if (modelId.toLowerCase().startsWith('openai-codex') || lookupCodexEffortCeiling(raw) !== undefined) {
     return resolveCodexEffortCeiling(modelId);
   }
   return DEFAULT_EFFORT_CEILING;

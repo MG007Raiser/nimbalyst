@@ -16,6 +16,7 @@ import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import { getProviderIcon } from '@nimbalyst/runtime/ui/icons/ProviderIcons';
 import { isAgentProvider, shouldBlockStartedSessionProviderSwitch, type AIModel } from '@nimbalyst/runtime/ai/server/types';
 import { registerClaudeCustomModelsFromCatalog } from '@nimbalyst/runtime/ai/claudeCustomModels';
+import { registerCodexEffortCeilingsFromModels } from '@nimbalyst/runtime/ai/server/effortLevels';
 import { getClaudeCodeModelLabel } from '../../utils/modelUtils';
 import { advancedSettingsAtom, aiProviderSettingsAtom } from '../../store/atoms/appSettings';
 import { setWindowModeAtom } from '../../store/atoms/windowMode';
@@ -118,7 +119,11 @@ export function ModelSelector({
       if (response.success && response.grouped) {
         setModels(response.grouped);
         // Labels and effort/thinking support for custom Claude gateway models.
-        registerClaudeCustomModelsFromCatalog(Object.values(response.grouped).flat() as AIModel[]);
+        const catalog = Object.values(response.grouped).flat() as AIModel[];
+        registerClaudeCustomModelsFromCatalog(catalog);
+        // Codex effort ceilings travel with the fetched catalog (#675); the
+        // renderer's copy of the effort table learns them here.
+        registerCodexEffortCeilingsFromModels(catalog);
         const meta = response as {
           providerLabels?: Record<string, string>;
           providerIcons?: Record<string, string>;
